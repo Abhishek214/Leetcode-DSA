@@ -10,7 +10,4 @@ class Solution:
             
             dict1[j]=dict1.get(j)-1
 
-        if all(i==0 for i in dict1.values()):
-            return True
-        else:
-            return False
+        return all(i==0 for i in dict1.values())
