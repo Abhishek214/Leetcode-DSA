@@ -1,0 +1,99 @@
+# Document Attribute Extraction Prompt
+
+Extract the following attributes from the provided document. For each attribute: (1) provide exact text + location if found, or (2) make an educated guess with reasoning if not found.
+
+## Attributes to Extract
+
+### Party & Document Info
+1. **Manager** - Investment manager/adviser name
+2. **Name of Company** - Client/customer entity name  
+3. **Title** - Document title
+4. **Execution Date** - When signed (note if different for each party)
+5. **Authorized Representatives** - Names, titles of signatories
+
+### Authority & Scope
+6. **Delegation of Authority** - Scope of discretionary powers granted
+7. **Authorization** - Formal appointment language
+8. **Access** - Rights to accounts, information, systems
+
+### Investment Terms
+9. **Investment Objective** - Purpose and goals
+10. **Investment Policy** - Strategy and approach
+11. **Investment Guidelines** - Detailed restrictions/requirements
+12. **Permitted Asset Types** - Allowed investments
+13. **Impermissible Asset Types** - Prohibited investments
+14. **Impermissible Actions** - Prohibited activities
+
+### Operational
+15. **Notices** - How/where notices sent
+16. **Term** - Duration and termination provisions
+
+### Legal & Risk
+17. **Liability** - Standard of care and limitations
+18. **Indemnity** - Indemnification scope for each party
+19. **Confidentiality** - Confidentiality obligations
+20. **Representations** - Representations and warranties
+21. **Governing Law** - Which jurisdiction's laws apply
+22. **Exclusive Jurisdiction** - Which courts have jurisdiction
+23. **Arbitration Agreement** - Arbitration provisions (if any)
+
+### Compensation
+24. **Fee Schedule** - Management fee structure
+25. **Performance Fee Benchmark** - Performance fee terms (if any)
+26. **Compensation Requirements** - All fee/expense terms
+
+### Fund Info
+27. **Fund Details** - Fund name, structure, description
+28. **Applicable Fund** - Specific account/mandate details
+29. **Additional Exhibits** - List all schedules/appendices
+
+---
+
+## Output Format
+
+For each attribute:
+
+**[ATTRIBUTE NAME]**
+- **Status:** FOUND / GUESS (High/Medium/Low confidence)
+- **Text:** "[exact quote]" OR [guessed value]
+- **Location:** [section/page/schedule] OR N/A
+- **Reasoning (if guess):** [Brief explanation based on document type, jurisdiction, party locations, industry standards, related clauses]
+
+---
+
+## Guessing Guidelines
+
+When attribute not explicitly stated, infer from:
+- **Document context** - Type, parties, jurisdiction, references
+- **Industry standards** - Typical terms for this document type
+- **Related clauses** - What other terms imply
+- **Party locations** - Regulatory frameworks that apply
+- **Commercial reasonableness** - What makes business sense
+
+Mark confidence:
+- **High** - Strong contextual evidence, clear industry norm
+- **Medium** - Reasonable inference from document type
+- **Low** - General principle only
+
+---
+
+## Key Search Locations
+
+- **Party info** - Title page, signature blocks, preamble
+- **Investment terms** - Schedules/appendices (often Appendix A-C)
+- **Fees** - Fee schedule appendix (often Appendix D)
+- **Legal terms** - Main body, general provisions section (usually near end)
+- **Operational** - Administrative provisions section
+
+---
+
+## Quick Reference: Common Document Patterns
+
+**UK/English Law:** FCA references, English courts, "authorised"
+**US Docs:** SEC/CFTC, may include arbitration (FINRA/AAA), "authorized"  
+**EU Docs:** UCITS/AIFMD/MiFID II references
+**Amendments:** Note both original agreement date AND amendment effective date
+
+---
+
+**Deliverable:** Provide all 29 attributes with status, text/guess, location, and reasoning. Flag any critical missing information or ambiguities.
