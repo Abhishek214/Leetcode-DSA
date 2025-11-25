@@ -1,1 +1,5 @@
  = r"(?:पति या पत्नी का नाम\s*/\s*)?Name of Spouse\s+(?P<name>[A-Z\s]+?)(?=\s+(?:पता|Address))
+
+pattern = r"(?:पिता\s*/\s*कानूनी\s*अभिभावक\s*का\s*नाम\s*/\s*)?Name of Father\s*/\s*Legal Guardian\s+(?:[A-Z0-9]+\s+)?(?P<name>[A-Z\s]+?)(?=\s+(?:माता|Name))"
+
+ r"(?:माता का नाम\s*/\s*)?Name of Mother\s+(?P<name>[A-Z\s]+?)(?=\s+(?:पति|Name))"
