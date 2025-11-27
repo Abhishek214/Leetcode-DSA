@@ -1,1 +1,11 @@
-`\d{1,2}\s(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s\d{4}`
+# Looks for "3." followed by a date pattern (DD-MM-YY)
+dob_regex = r"3\.\s*(\d{2}-\d{2}-\d{2})"
+
+# Captures everything after "8." 
+address_regex = r"8\.\s*([\s\S]*?)(?=\n9|\Z)"
+
+# Looks for "4b." followed by a date pattern
+expiry_date_regex = r"4b\.\s*(\d{2}-\d{2}-\d{2})"
+
+# Looks for "5." and captures the alphanumeric string
+license_number_regex = r"5\.\s*([A-Z0-9]+)"
