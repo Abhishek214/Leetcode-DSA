@@ -1,11 +1,17 @@
-# Looks for "3." followed by a date pattern (DD-MM-YY)
-dob_regex = r"3\.\s*(\d{2}-\d{2}-\d{2})"
+def get_date_format(date_str):
+    patterns = {
+        "%d/%m/%Y": "DD/MM/YYYY",
+        "%m/%d/%Y": "MM/DD/YYYY",
+        "%Y-%m-%d": "YYYY-MM-DD",
+        "%d-%m-%Y": "DD-MM-YYYY",
+        "%Y/%m/%d": "YYYY/MM/DD",
+    }
 
-# Captures everything after "8." 
-address_regex = r"8\.\s*([\s\S]*?)(?=\n9|\Z)"
-
-# Looks for "4b." followed by a date pattern
-expiry_date_regex = r"4b\.\s*(\d{2}-\d{2}-\d{2})"
-
-# Looks for "5." and captures the alphanumeric string
-license_number_regex = r"5\.\s*([A-Z0-9]+)"
+    import datetime
+    for fmt in patterns:
+        try:
+            datetime.datetime.strptime(date_str, fmt)
+            return patterns[fmt]
+        except:
+            continue
+    return "Unknown format"
