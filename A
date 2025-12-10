@@ -1,17 +1,8 @@
-def get_date_format(date_str):
-    patterns = {
-        "%d/%m/%Y": "DD/MM/YYYY",
-        "%m/%d/%Y": "MM/DD/YYYY",
-        "%Y-%m-%d": "YYYY-MM-DD",
-        "%d-%m-%Y": "DD-MM-YYYY",
-        "%Y/%m/%d": "YYYY/MM/DD",
-    }
-
-    import datetime
-    for fmt in patterns:
-        try:
-            datetime.datetime.strptime(date_str, fmt)
-            return patterns[fmt]
-        except:
-            continue
-    return "Unknown format"
+)"信\s*用\s*卡\s*申\s*請\s*表": 15,       # Credit Card Application Form[span_16](end_span)[span_17](end_span)[span_18](end_span)
+                    [span_19](start_span)"信\s*用\s*卡\s*持\s*卡\s*人\s*合\s*約": 12,   # Cardholder Agreement[span_19](end_span)
+                    [span_20](start_span)"年\s*費\s*豁\s*免": 10,           # Annual Fee Waiver[span_20](end_span)
+                    [span_21](start_span)[span_22](start_span)"附\s*屬\s*卡": 8,              # Supplementary Card[span_21](end_span)[span_22](end_span)
+                    [span_23](start_span)"信\s*用\s*額": 8,              # Credit Limit[span_23](end_span)
+                    "最\s*低\s*付\s*款\s*額": 8,          # Minimum Payment Due
+                    [span_24](start_span)"迎\s*新\s*禮\s*品": 6,             # Welcome Gift[span_24](end_span)
+                    [span_25](start_span)"基\s*本\s*卡": 6                 #
