@@ -84,3 +84,50 @@ def classify_with_llm(text_data, categories_config, business_type):
         # In production, use your logger here
         print(f"LLM Classification failed: {e}")
         return "UNKNOWN_DOCTYPE", 0
+
+
+
+
+
+# Inside source/classify.py
+
+def classify_pages(page_text_dict, business, categories, logger):
+    data = {}
+    scores = {}
+
+    logger.info(f"Classifying pages using LLM for business: {business}")
+
+    # Ensure we have the specific category config for this business
+    # Assuming 'categories' passed here is the full structure or resolving it from imports
+    # If 'categories' argument is just the list of names, fetch the full config:
+    from configurations.params import business_categories
+    
+    # robustly get the config dict
+    if business in business_categories:
+        categories_config = business_categories[business]["categories"]
+    else:
+        # Fallback or use the passed 'categories' if it matches the structure
+        categories_config = categories 
+
+    for i, t in enumerate(page_text_dict.keys()):
+        text = page_text_dict[t]
+        
+        # Skip empty pages
+        if not text.strip():
+            data[i+1] = 'UNKNOWN_DOCTYPE'
+            scores[i+1] = 0
+            continue
+
+        # --- REPLACED SCORING LOGIC WITH LLM CALL ---
+        # Pass the full text (not regex stripped) and the config with keywords
+        label, score = classify_with_llm(text, categories_config, business)
+        
+        scores[i+1] = score
+        data[i+1] = label
+        
+        logger.info(f"Page {i+1} classified as: {label}")
+        # ---------------------------------------------
+
+    # ... rest of the existing page splitting logic (handling NARI, ND2A, etc.) ...
+
+
