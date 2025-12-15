@@ -1,0 +1,184 @@
+import os
+import requests
+from configurations.params import LLM_VISION_ENDPOINT, business_categories, folder_to_label
+
+def format_category_context(categories_config):
+    """
+    Helper: Converts category config into instructions for the LLM.
+    """
+    description_lines = []
+    for category, keywords_dict in categories_config.items():
+        # Limit to top 10 keywords to keep prompt concise
+        keywords = list(keywords_dict.keys())[:10]
+        keywords_str = ", ".join([str(k) for k in keywords])
+        line = f"- {category}: Look for visual cues or text like: [{keywords_str}]"
+        description_lines.append(line)
+    
+    return "\n".join(description_lines)
+
+def classify_image_with_llm(image_path, categories_config, business_type):
+    """
+    Helper: Sends an image path and category context to the Vision LLM.
+    """
+    # 1. Prepare Context
+    category_instructions = format_category_context(categories_config)
+    
+    prompt = f"""
+    You are a document classification assistant for business line: {business_type}.
+    
+    Task: Analyze the provided document image and classify it into exactly one of the categories below.
+    
+    Valid Categories and Indicators:
+    {category_instructions}
+    
+    Instructions:
+    - Return ONLY the category name (e.g., 'Passport', 'BR', 'MOM').
+    - If the image is unclear or does not match any category, return 'UNKNOWN_DOCTYPE'.
+    """
+
+    # 2. Prepare Request (Adjust based on your specific LLM API specs)
+    # This example assumes a multipart/form-data upload
+    files = {
+        'file': open(image_path, 'rb')
+    }
+    data = {
+        'prompt': prompt,
+        'model': 'your-vision-model-name' # Update this if needed
+    }
+
+    try:
+        response = requests.post(LLM_VISION_ENDPOINT, files=files, data=data, verify=False, timeout=30)
+        
+        # Close file handler
+        files['file'].close()
+        
+        response.raise_for_status()
+        
+        # 3. Parse Response
+        result = response.json()
+        # Adjust key access based on your actual API response (e.g., result['output'] or result['choices'][0]...)
+        predicted_category = result.get('output', 'UNKNOWN_DOCTYPE').strip() 
+        
+        # Cleanup prediction string
+        predicted_category = predicted_category.strip(".'\"")
+
+        # Validate against config
+        if predicted_category in categories_config:
+            return predicted_category, 0.95
+        else:
+            return "UNKNOWN_DOCTYPE", 0
+
+    except Exception as e:
+        print(f"Vision LLM failed for {image_path}: {e}")
+        return "UNKNOWN_DOCTYPE", 0
+
+def classify_pages(image_paths, business, categories, logger):
+    """
+    Classifies pages using Vision LLM and groups them into document ranges.
+    Replaces original regex-based classify_pages.
+    """
+    data = {}
+    scores = {}
+
+    logger.info(f"Classifying {len(image_paths)} pages using Vision LLM...")
+
+    # Resolve specific category config
+    if business in business_categories:
+        categories_config = business_categories[business]["categories"]
+    else:
+        categories_config = categories 
+
+    # --- PHASE 1: LLM Classification Loop ---
+    for i, img_path in enumerate(image_paths):
+        page_num = i + 1
+        
+        # Call Vision LLM
+        label, score = classify_image_with_llm(img_path, categories_config, business)
+        
+        scores[page_num] = score
+        data[page_num] = label
+        
+        logger.info(f"Page {page_num} classified as: {label}")
+        
+        # Optional: Clean up temp file immediately to save space
+        try:
+            os.remove(img_path)
+        except Exception:
+            pass
+
+    # Handle case where first page is UNKNOWN/Validation Logic (Ported from original)
+    if 1 in data:
+        if data[1] in ['NARI', 'ND2A'] or data[1] == 'UNKNOWN_DOCTYPE':
+             # Logic from original source: check previous page (N/A for page 1, but keeping structure)
+             pass
+
+    # --- PHASE 2: Grouping Logic (Ported from original source) ---
+    pages = sorted(data.keys())
+    result = []
+    iteration_count = 0
+
+    while pages:
+        iteration_count += 1
+        start = pages[0]
+        classification = data[start]
+        
+        # Prevent infinite loops
+        if classification == 'UNKNOWN_DOCTYPE':
+            # Basic unknown handling
+            if iteration_count > 100:
+                break 
+        
+        # Handle specific single-page documents
+        if classification in ['HKID', 'Passport', 'Driving_license', 'National_identity_card',
+                              'Energy_bill', 'Water_bill', 'China_2_way_permit']:
+            logger.info(f"Handle single-pager documents: {classification}")
+            result.append((start, start + 1, classification))
+            pages.remove(start)
+            continue
+        
+        # Handling single classification instead of split
+        if classification in ['EIDVA']:
+            result.append((start, len(data) + 1, classification)) # Takes rest of doc
+            pages = []
+            continue
+
+        # Handle consecutive pager documents like nari and nd2a
+        if classification in ['NARI', 'ND2A', 'NAR1']:
+            end = start
+            while end + 1 in data and data[end + 1] == classification:
+                end += 1
+            result.append((start, end + 1, classification))
+            for i in range(start, end + 1):
+                if i in pages: pages.remove(i)
+            continue
+
+        # Handle complex cases for MOM and BR (Minutes of Meeting, Business Registration)
+        if classification in ['MOM', 'BR']:
+            end = start
+            # Keep extending if next page is same class or Unknown
+            while end + 1 in data and data[end + 1] in ['MOM', 'BR', 'UNKNOWN_DOCTYPE']:
+                end += 1
+            
+            # [span_0](start_span)Check context (previous/next pages) - Logic from original source[span_0](end_span)
+            prev_pages = [p for p in range(max(1, start - 2), start) if p in data] # Adjusted index logic
+            next_pages = [p for p in range(end + 1, min(max(data.keys()) + 1, end + 3)) if p in data]
+            
+            # Note: Original source logic for extending start/end based on prev_pages/next_pages 
+            # seemed to rely on list indices. Simplified here to respect page numbers.
+            
+            result.append((start, end + 1, classification))
+            for i in range(start, end + 1):
+                if i in pages: pages.remove(i)
+            continue
+            
+        # Default/Fallback for other types or UNKNOWN
+        # If it's a known type not handled above, treat as single page or define behavior
+        if classification in folder_to_label.keys():
+             result.append((start, start + 1, classification))
+             pages.remove(start)
+        else:
+             # If completely unknown, just mark this page and move on
+             result.append((start, start + 1, 'UNKNOWN_DOCTYPE'))
+             pages.remove(start)
+
+    return result, scores
