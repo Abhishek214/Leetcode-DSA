@@ -1,94 +1,52 @@
 import requests
 import json
+import urllib.parse
 
-# --- CONFIGURATION ---
+# --- CONFIGURATION (from your images) ---
 BEARER_TOKEN = "ey...REPLACE_WITH_YOUR_FULL_TOKEN..."
-FILE_PATH = r"C:\Users\45439537\Downloads\HKID\11250203a_G20033000122.pdf"
+FILE_PATH = r"C:\Users\45439537\Downloads\HKID\11250203a_G20033000122.pdf" # Assuming this file is used for the ingest
 
-# Common headers (Note: We do NOT include Content-Type here because it changes per request)
+# Document processing parameters from your image
+ingest_params = {
+    "title": "a.pdf",
+    "classification": "PUBLIC",
+    "extension": "pdf",
+    "session_id": "eb34d2ea-0a1b-47e6-b78d-bac0592f76ed",
+    "save_document_blob": "False",
+    "save_document_metadata": "False",
+    "timeout": "600",
+    "multimodal": "True",
+    "chunk_method": "PAGE",
+    "chunk_size": "1",
+    "chunk_overlap": "450"
+}
+
+# Common headers
 headers = {
     "Authorization": f"Bearer {BEARER_TOKEN}",
     "User-Agent": "insomnia/10.3.0"
 }
 
-# --- STEP 1: CREATE SESSION ---
-url_session = "https://dcrest-dev-session-service.azurewebsites.net/session/lydia"
-payload_session = {
-    "name": "My Session"
-}
+# --- STEP 2: INGEST DOCUMENT (Upload) with new parameters ---
+base_url_ingest = "https://dcrest-dev-ingest-service.azurewebsites.net/ingest/lydia"
 
-# We create a copy of headers and add Content-Type: application/json
-headers_json = headers.copy()
-headers_json["Content-Type"] = "application/json"
+# Encode parameters into a query string
+query_string = urllib.parse.urlencode(ingest_params)
 
-print(f"--- 1. Creating Session ({url_session}) ---")
-response_session = requests.post(url_session, headers=headers_json, json=payload_session)
-print(f"Status Code: {response_session.status_code}")
-print(f"Response: {response_session.text}")
+# Combine the base URL with the new query parameters
+url_ingest_with_params = f"{base_url_ingest}?{query_string}"
 
-# In a real scenario, you might extract the ID here:
-# session_id = response_session.json().get('id')
+print(f"\n--- 2. Ingesting File ({base_url_ingest}) with Parameters ---")
+# Print the full URL for verification (optional)
+# print(f"Full URL: {url_ingest_with_params}")
 
-
-# --- STEP 2: INGEST DOCUMENT (Upload) ---
-# Note: The URL in your image had query parameters cut off (?titl...). 
-# Add them to the URL string below if required.
-url_ingest = "https://dcrest-dev-ingest-service.azurewebsites.net/ingest/lydia?title=DocumentTitle"
-
-print(f"\n--- 2. Ingesting File ({url_ingest}) ---")
 # Open the file in binary mode
 try:
     with open(FILE_PATH, 'rb') as f:
         files = {'file': f}
-        # Note: requests adds the correct multipart/form-data header automatically
-        response_ingest = requests.post(url_ingest, headers=headers, files=files)
+        # Note: requests handles multipart/form-data automatically for file uploads
+        response_ingest = requests.post(url_ingest_with_params, headers=headers, files=files)
         print(f"Status Code: {response_ingest.status_code}")
         print(f"Response: {response_ingest.text}")
 except FileNotFoundError:
     print(f"Error: File not found at {FILE_PATH}")
-
-
-# --- STEP 3: GET INGEST STATUS ---
-# Note: URL query params cut off in image (?pare...). Update if needed.
-url_status = "https://dcrest-dev-ingest-service.azurewebsites.net/ingest/lydia?parent_id=..." 
-
-print(f"\n--- 3. Checking Status ({url_status}) ---")
-response_status = requests.get(url_status, headers=headers)
-print(f"Status Code: {response_status.status_code}")
-print(f"Response: {response_status.text}")
-
-
-# --- STEP 4: CHAT / RAG CALL ---
-url_chat = "https://dcrest-dev-chat-service.azurewebsites.net/rag/lydia"
-
-payload_chat = {
-    "messages": [
-        {
-            "role": "system",
-            "content": "You are an intelligent" 
-        },
-        {
-            "role": "user",
-            # The prompt in your image was cut off, update as needed
-            "content": "Analyze the image and identify the PAN card. Return the box..."
-        }
-    ],
-    "model": "gpt-4o",
-    "encoding_model": "cl100k_base",
-    "embedding_model": "text-embedding-ada-002",
-    "temperature": 0.1,
-    "vector_store_index": "lydia-embeddings",
-    "search_text": "Analyze the image and identify the PAN card. Return the box...",
-    "use_tools": False,
-    "max_number_of_documents": 10,
-    "save_response": False,
-    # Make sure to use the active session ID here
-    "session_id": "eb34d2ea-0a1b-47e6-b78d-bac0592f76ed", 
-    "model_answer_timeout": 120,
-    "multimodal": "true"
-}
-
-print(f"\n--- 4. Sending Chat Request ({url_chat}) ---")
-response_chat = requests.post(url_chat, headers=headers_json, json=payload_chat)
-print(f"Status Code: {response_chat.status_code}")
-print(f"Response: {response_chat.text}")
