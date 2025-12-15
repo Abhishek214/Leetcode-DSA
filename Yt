@@ -1,0 +1,16 @@
+
+    # Check if the document has at least 2 pages
+    if len(data) > 1:
+        # Check Page 1: If it's UNKNOWN, see if the next page gives context for a multi-page doc
+        if data.get(1) == 'UNKNOWN_DOCTYPE':
+            # If the next page is NARI/ND2A/MOM/BR, assume page 1 belongs to it
+            if data.get(2) in ['NARI', 'ND2A', 'NAR1', 'MOM', 'BR']:
+                data[1] = data[2]
+                logger.info(f"Page 1 (UNKNOWN) reclassified as {data[1]} based on Page 2.")
+    
+    # This logic from the original source snippet is only valid within the loop,
+    # but since we processed pages in one go, we can apply it here for robustness:
+    # if data[i] in ['NARI', 'ND2A'] or data[i] == 'UNKNOWN_DOCTYPE':
+    #     if data[i-1] in ['NARI', 'ND2A']:
+    #          data[i] = data[i-1]
+    #          continue
