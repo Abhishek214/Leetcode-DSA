@@ -1,21 +1,94 @@
- "Saving/Current/Time Deposit": 15, 
-                    "Personal/Joint": 10,
-                    
-                    # Specific Product Name found in Image 3 & 4
-                    "Super Ease Account": 12, 
-                    "Wan Yong Hu Kou": 8, 
-                    
-                    # Features mentioned in Image 3
-                    "Purchase Protection Scheme": 8,
-                    "Easy Pay System": 6,
-                    "Visa Debit": 6,
-                    
-                    # Handling OCR Noise from Image 2 (CURD instead of CURR)
-                    "CURD A/C": 10,
-                    
-                    # Chinese Keywords from Images 2 & 4
-                    "萬\s*用\s*戶\s*口": 12,          # "Super Ease Account" (Chinese)
-                    "儲\s*蓄\s*": 8,                # "Savings" (often paired with Current)
-                    "定\s*期\s*": 8,                # "Time Deposit"
-                    "個\s*人\s*/\s*聯\s*名": 10,     # "Personal/Joint"
-                    "申\s*請\s*人\s*資\s*料": 6      # "Applicant Information"
+import requests
+import json
+
+# --- CONFIGURATION ---
+BEARER_TOKEN = "ey...REPLACE_WITH_YOUR_FULL_TOKEN..."
+FILE_PATH = r"C:\Users\45439537\Downloads\HKID\11250203a_G20033000122.pdf"
+
+# Common headers (Note: We do NOT include Content-Type here because it changes per request)
+headers = {
+    "Authorization": f"Bearer {BEARER_TOKEN}",
+    "User-Agent": "insomnia/10.3.0"
+}
+
+# --- STEP 1: CREATE SESSION ---
+url_session = "https://dcrest-dev-session-service.azurewebsites.net/session/lydia"
+payload_session = {
+    "name": "My Session"
+}
+
+# We create a copy of headers and add Content-Type: application/json
+headers_json = headers.copy()
+headers_json["Content-Type"] = "application/json"
+
+print(f"--- 1. Creating Session ({url_session}) ---")
+response_session = requests.post(url_session, headers=headers_json, json=payload_session)
+print(f"Status Code: {response_session.status_code}")
+print(f"Response: {response_session.text}")
+
+# In a real scenario, you might extract the ID here:
+# session_id = response_session.json().get('id')
+
+
+# --- STEP 2: INGEST DOCUMENT (Upload) ---
+# Note: The URL in your image had query parameters cut off (?titl...). 
+# Add them to the URL string below if required.
+url_ingest = "https://dcrest-dev-ingest-service.azurewebsites.net/ingest/lydia?title=DocumentTitle"
+
+print(f"\n--- 2. Ingesting File ({url_ingest}) ---")
+# Open the file in binary mode
+try:
+    with open(FILE_PATH, 'rb') as f:
+        files = {'file': f}
+        # Note: requests adds the correct multipart/form-data header automatically
+        response_ingest = requests.post(url_ingest, headers=headers, files=files)
+        print(f"Status Code: {response_ingest.status_code}")
+        print(f"Response: {response_ingest.text}")
+except FileNotFoundError:
+    print(f"Error: File not found at {FILE_PATH}")
+
+
+# --- STEP 3: GET INGEST STATUS ---
+# Note: URL query params cut off in image (?pare...). Update if needed.
+url_status = "https://dcrest-dev-ingest-service.azurewebsites.net/ingest/lydia?parent_id=..." 
+
+print(f"\n--- 3. Checking Status ({url_status}) ---")
+response_status = requests.get(url_status, headers=headers)
+print(f"Status Code: {response_status.status_code}")
+print(f"Response: {response_status.text}")
+
+
+# --- STEP 4: CHAT / RAG CALL ---
+url_chat = "https://dcrest-dev-chat-service.azurewebsites.net/rag/lydia"
+
+payload_chat = {
+    "messages": [
+        {
+            "role": "system",
+            "content": "You are an intelligent" 
+        },
+        {
+            "role": "user",
+            # The prompt in your image was cut off, update as needed
+            "content": "Analyze the image and identify the PAN card. Return the box..."
+        }
+    ],
+    "model": "gpt-4o",
+    "encoding_model": "cl100k_base",
+    "embedding_model": "text-embedding-ada-002",
+    "temperature": 0.1,
+    "vector_store_index": "lydia-embeddings",
+    "search_text": "Analyze the image and identify the PAN card. Return the box...",
+    "use_tools": False,
+    "max_number_of_documents": 10,
+    "save_response": False,
+    # Make sure to use the active session ID here
+    "session_id": "eb34d2ea-0a1b-47e6-b78d-bac0592f76ed", 
+    "model_answer_timeout": 120,
+    "multimodal": "true"
+}
+
+print(f"\n--- 4. Sending Chat Request ({url_chat}) ---")
+response_chat = requests.post(url_chat, headers=headers_json, json=payload_chat)
+print(f"Status Code: {response_chat.status_code}")
+print(f"Response: {response_chat.text}")
