@@ -1,52 +1,86 @@
-import requests
-import json
-import urllib.parse
+def format_category_context(categories_config):
+    """
+    Converts the categories dictionary into a descriptive string for the LLM.
+    Example output:
+    - BR: associated with 'written', 'resolution', 'resolved that'
+    - MOM: associated with 'minutes of a meeting', 'meeting'
+    """
+    description_lines = []
+    for category, keywords_dict in categories_config.items():
+        # Extract the keys (keywords) from the dictionary
+        # We take the top 10 keywords to avoid overflowing the prompt context
+        keywords = list(keywords_dict.keys())[:10]
+        
+        # Clean regex patterns if necessary, or just pass them as strings
+        # For this POC, we join them as a comma-separated list
+        keywords_str = ", ".join([str(k) for k in keywords])
+        
+        line = f"- {category}: Look for terms/patterns like: [{keywords_str}]"
+        description_lines.append(line)
+    
+    return "\n".join(description_lines)
 
-# --- CONFIGURATION (from your images) ---
-BEARER_TOKEN = "ey...REPLACE_WITH_YOUR_FULL_TOKEN..."
-FILE_PATH = r"C:\Users\45439537\Downloads\HKID\11250203a_G20033000122.pdf" # Assuming this file is used for the ingest
+def classify_with_llm(text_data, categories_config, business_type):
+    """
+    Classifies document text using an in-house LLM endpoint with keyword context.
+    """
+    import requests
+    from configurations.params import LLM_ENDPOINT # Ensure this is added to params.py
 
-# Document processing parameters from your image
-ingest_params = {
-    "title": "a.pdf",
-    "classification": "PUBLIC",
-    "extension": "pdf",
-    "session_id": "eb34d2ea-0a1b-47e6-b78d-bac0592f76ed",
-    "save_document_blob": "False",
-    "save_document_metadata": "False",
-    "timeout": "600",
-    "multimodal": "True",
-    "chunk_method": "PAGE",
-    "chunk_size": "1",
-    "chunk_overlap": "450"
-}
+    # 1. Clean and truncate text (keep enough context for the LLM)
+    # We remove excess whitespace but keep the structure
+    clean_text = " ".join(text_data.split())[:3000]
 
-# Common headers
-headers = {
-    "Authorization": f"Bearer {BEARER_TOKEN}",
-    "User-Agent": "insomnia/10.3.0"
-}
+    # 2. Generate Category Context from params
+    category_context_str = format_category_context(categories_config)
+    
+    # 3. Construct the Prompt with specific keyword instructions
+    prompt = f"""
+    You are a document classification assistant for the business line: {business_type}.
+    
+    Task: Classify the provided document text into exactly one of the valid categories below.
+    
+    Valid Categories and their Indicators (Keywords):
+    {category_context_str}
+    
+    Instructions:
+    - Compare the document text against the indicators provided for each category.
+    - If the text matches the keywords or intent of a category, return that Category Name.
+    - If the text does not match any category clearly, return 'UNKNOWN_DOCTYPE'.
+    - Return ONLY the category name. No explanations.
 
-# --- STEP 2: INGEST DOCUMENT (Upload) with new parameters ---
-base_url_ingest = "https://dcrest-dev-ingest-service.azurewebsites.net/ingest/lydia"
+    Document Text:
+    {clean_text}
+    """
 
-# Encode parameters into a query string
-query_string = urllib.parse.urlencode(ingest_params)
+    # 4. Call the LLM Endpoint
+    payload = {
+        "model": "your-model-name", 
+        "messages": [
+            {"role": "system", "content": "You are a precise document classifier."},
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.0, # Deterministic output
+    }
 
-# Combine the base URL with the new query parameters
-url_ingest_with_params = f"{base_url_ingest}?{query_string}"
+    try:
+        response = requests.post(LLM_ENDPOINT, json=payload, verify=False, timeout=10)
+        response.raise_for_status()
+        
+        # Parse Response
+        result = response.json()
+        predicted_category = result['choices'][0]['message']['content'].strip()
+        
+        # Clean up any extra punctuation the LLM might add (e.g., "BR." -> "BR")
+        predicted_category = predicted_category.strip(".'\"")
 
-print(f"\n--- 2. Ingesting File ({base_url_ingest}) with Parameters ---")
-# Print the full URL for verification (optional)
-# print(f"Full URL: {url_ingest_with_params}")
+        # Validation: Ensure the prediction is actually one of our keys
+        if predicted_category in categories_config:
+            return predicted_category, 0.95 
+        else:
+            return "UNKNOWN_DOCTYPE", 0
 
-# Open the file in binary mode
-try:
-    with open(FILE_PATH, 'rb') as f:
-        files = {'file': f}
-        # Note: requests handles multipart/form-data automatically for file uploads
-        response_ingest = requests.post(url_ingest_with_params, headers=headers, files=files)
-        print(f"Status Code: {response_ingest.status_code}")
-        print(f"Response: {response_ingest.text}")
-except FileNotFoundError:
-    print(f"Error: File not found at {FILE_PATH}")
+    except Exception as e:
+        # In production, use your logger here
+        print(f"LLM Classification failed: {e}")
+        return "UNKNOWN_DOCTYPE", 0
