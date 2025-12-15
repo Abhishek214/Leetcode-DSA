@@ -1,0 +1,58 @@
+# source/classify.py
+
+def classify_doc(file, file_bytes, business, document_ui_id, logger, doc_text=None, page_angles=None):
+    try:
+        file_reader = FileManager(file.filename, logger) # Ensure logger is passed if __init__ requires it
+        
+        # 1. Get raw bytes (handles docx conversion if needed)
+        pdf_bytes = file_reader.process_file()
+        
+        if not pdf_bytes:
+            # ... handle empty error ...
+            return { ... } # [Keep existing error return]
+
+        # 2. SAVE PAGES AS IMAGES (New Step)
+        # Instead of fetch_data, we generate images
+        logger.info("Converting PDF pages to images for Vision LLM...")
+        image_paths = file_reader.save_pages_as_temp_images(pdf_bytes)
+        
+        # Mock page angles (since we skipped OCR which provided them)
+        # If your split logic needs rotation, you might need a separate rotation check.
+        # For now, we assume 0.
+        page_angles = [0] * len(image_paths)
+
+        # 3. CLASSIFY (Pass image paths)
+        classified_results, page_scores = classify_pages(image_paths, business, categories, logger)
+        
+        if not classified_results:
+             # ... handle error ...
+             pass
+        
+        # 4. SPLIT AND RETURN (Existing Logic)
+        # classified_results is list of tuples: (start, end, label)
+        classified_base64_results, is_rotated = split_and_convert_to_base64(pdf_bytes, classified_results, page_angles, logger)
+        
+        docsplit_data = []
+        for i, (key, base64_pdf) in enumerate(classified_base64_results.items()):
+            label_from_folder = folder_to_label.get(key.split('_')[0], "UNKNOWN_DOCTYPE")
+            doctype_code = get_doc_sub_type(label_from_folder, "") # Note: Text data is empty now
+            doctype_dcrest = dcrestDoctype(label_from_folder)
+            
+            temp = {
+                "doctype": doctype_code, 
+                "doctype_dcrest": doctype_dcrest,
+                "pred_score": "", 
+                "time_taken": 0,
+                "is_rotated": is_rotated,
+                "start_pg_no": classified_results[i][0], 
+                "end_pg_no": classified_results[i][1],
+                "base64": base64_pdf,
+                "fileName": f"{key}_{str(file.filename).split('.')[0]}.pdf"
+            }
+            docsplit_data.append(temp)
+        
+        return docsplit_data
+        
+    except Exception as e:
+        logger.error(f"An Exception has Occurred: {e}")
+        # ... return error dict ...
