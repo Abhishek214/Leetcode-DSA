@@ -1,133 +1,110 @@
-def format_category_context(categories_config):
-    """
-    Converts the categories dictionary into a descriptive string for the LLM.
-    Example output:
-    - BR: associated with 'written', 'resolution', 'resolved that'
-    - MOM: associated with 'minutes of a meeting', 'meeting'
-    """
-    description_lines = []
-    for category, keywords_dict in categories_config.items():
-        # Extract the keys (keywords) from the dictionary
-        # We take the top 10 keywords to avoid overflowing the prompt context
-        keywords = list(keywords_dict.keys())[:10]
+# utils/file_manager.py
+
+import tempfile
+import os
+
+    # ... existing code ...
+
+    def save_pages_as_temp_images(self, pdf_bytes: bytes) -> list[str]:
+        """
+        Renders PDF bytes into images, saves them to a temp directory, 
+        and returns a list of file paths.
+        """
+        image_paths = []
         
-        # Clean regex patterns if necessary, or just pass them as strings
-        # For this POC, we join them as a comma-separated list
-        keywords_str = ", ".join([str(k) for k in keywords])
-        
-        line = f"- {category}: Look for terms/patterns like: [{keywords_str}]"
-        description_lines.append(line)
-    
-    return "\n".join(description_lines)
+        try:
+            # Use pypdfium2 to load the document from bytes
+            pdf_object = pdfium.PdfDocument(pdf_bytes)
+            
+            # Create a temporary directory (or use a specific cache dir)
+            temp_dir = tempfile.gettempdir()
+            
+            for page_id in range(len(pdf_object)):
+                page = pdf_object[page_id]
+                
+                # Render page to bitmap (scale=2 for better quality for LLM)
+                bitmap = page.render(scale=2, rotation=0)
+                pil_image = bitmap.to_pil()
+                
+                # Generate a unique temporary file path
+                temp_filename = f"dcrest_page_{self.file_name}_{page_id}_{uuid.uuid4().hex}.jpg"
+                temp_path = os.path.join(temp_dir, temp_filename)
+                
+                # Save image
+                pil_image.save(temp_path, format="JPEG")
+                image_paths.append(temp_path)
+                
+                # Cleanup pypdfium objects
+                del page, bitmap
 
-def classify_with_llm(text_data, categories_config, business_type):
-    """
-    Classifies document text using an in-house LLM endpoint with keyword context.
-    """
-    import requests
-    from configurations.params import LLM_ENDPOINT # Ensure this is added to params.py
+            pdf_object.close()
+            self.logger.info(f"Saved {len(image_paths)} page images to disk.")
+            return image_paths
 
-    # 1. Clean and truncate text (keep enough context for the LLM)
-    # We remove excess whitespace but keep the structure
-    clean_text = " ".join(text_data.split())[:3000]
-
-    # 2. Generate Category Context from params
-    category_context_str = format_category_context(categories_config)
-    
-    # 3. Construct the Prompt with specific keyword instructions
-    prompt = f"""
-    You are a document classification assistant for the business line: {business_type}.
-    
-    Task: Classify the provided document text into exactly one of the valid categories below.
-    
-    Valid Categories and their Indicators (Keywords):
-    {category_context_str}
-    
-    Instructions:
-    - Compare the document text against the indicators provided for each category.
-    - If the text matches the keywords or intent of a category, return that Category Name.
-    - If the text does not match any category clearly, return 'UNKNOWN_DOCTYPE'.
-    - Return ONLY the category name. No explanations.
-
-    Document Text:
-    {clean_text}
-    """
-
-    # 4. Call the LLM Endpoint
-    payload = {
-        "model": "your-model-name", 
-        "messages": [
-            {"role": "system", "content": "You are a precise document classifier."},
-            {"role": "user", "content": prompt}
-        ],
-        "temperature": 0.0, # Deterministic output
-    }
-
-    try:
-        response = requests.post(LLM_ENDPOINT, json=payload, verify=False, timeout=10)
-        response.raise_for_status()
-        
-        # Parse Response
-        result = response.json()
-        predicted_category = result['choices'][0]['message']['content'].strip()
-        
-        # Clean up any extra punctuation the LLM might add (e.g., "BR." -> "BR")
-        predicted_category = predicted_category.strip(".'\"")
-
-        # Validation: Ensure the prediction is actually one of our keys
-        if predicted_category in categories_config:
-            return predicted_category, 0.95 
-        else:
-            return "UNKNOWN_DOCTYPE", 0
-
-    except Exception as e:
-        # In production, use your logger here
-        print(f"LLM Classification failed: {e}")
-        return "UNKNOWN_DOCTYPE", 0
+        except Exception as e:
+            self.logger.error(f"Error saving page images: {e}")
+            raise RuntimeError("Failed to convert PDF pages to images") from e
 
 
+# source/classify.py
 
-
-
-# Inside source/classify.py
-
-def classify_pages(page_text_dict, business, categories, logger):
+def classify_pages(image_paths, business, categories, logger):
     data = {}
     scores = {}
 
-    logger.info(f"Classifying pages using LLM for business: {business}")
+    logger.info(f"Classifying {len(image_paths)} pages using Vision LLM...")
 
-    # Ensure we have the specific category config for this business
-    # Assuming 'categories' passed here is the full structure or resolving it from imports
-    # If 'categories' argument is just the list of names, fetch the full config:
+    # Resolve specific category config
     from configurations.params import business_categories
-    
-    # robustly get the config dict
     if business in business_categories:
         categories_config = business_categories[business]["categories"]
     else:
-        # Fallback or use the passed 'categories' if it matches the structure
         categories_config = categories 
 
-    for i, t in enumerate(page_text_dict.keys()):
-        text = page_text_dict[t]
+    # Iterate over image paths
+    for i, img_path in enumerate(image_paths):
+        page_num = i + 1
         
-        # Skip empty pages
-        if not text.strip():
-            data[i+1] = 'UNKNOWN_DOCTYPE'
-            scores[i+1] = 0
-            continue
-
-        # --- REPLACED SCORING LOGIC WITH LLM CALL ---
-        # Pass the full text (not regex stripped) and the config with keywords
-        label, score = classify_with_llm(text, categories_config, business)
+        # Call Vision LLM
+        label, score = classify_image_with_llm(img_path, categories_config, business)
         
-        scores[i+1] = score
-        data[i+1] = label
+        scores[page_num] = score
+        data[page_num] = label
         
-        logger.info(f"Page {i+1} classified as: {label}")
-        # ---------------------------------------------
+        logger.info(f"Page {page_num} ({img_path}) classified as: {label}")
+        
+        # Optional: Remove temp image after processing to save space
+        try:
+            os.remove(img_path)
+        except:
+            pass
 
-    # ... rest of the existing page splitting logic (handling NARI, ND2A, etc.) ...
+    # --- Existing logic for grouping pages (NARI, ND2A, etc.) remains below ---
+    # The logic below (lines 80-90 in original) expects 'data' dictionary 
+    # {1: 'Label', 2: 'Label'}, which we just populated.
+    
+    pages = sorted(data.keys())
+    result = []
+    
+    # ... (Copy the rest of the grouping logic from original source lines 80-90) ...
+    
+    # Start of existing grouping logic
+    while pages:
+        start = pages[0]
+        classification = data[start]
+        
+        # ... [Keep your existing grouping logic unchanged] ...
+        
+        # (Shortened for brevity - paste original logic here)
+        if classification in ['HKID', 'Passport', 'Driving_license', 'Energy_bill']:
+             result.append((start, start + 1, classification))
+             pages.remove(start)
+             continue
+             
+        # ... [Handle MOM/BR ranges logic] ...
+        
+        # Temporary fallback for closing the loop if logic not pasted
+        if start in pages: pages.remove(start) 
 
+    return result, scores
 
