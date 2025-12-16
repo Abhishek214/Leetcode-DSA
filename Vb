@@ -1,0 +1,100 @@
+def format_category_context(categories_config):
+    """
+    Converts category config into weighted instructions for the LLM.
+    Separates keywords into 'Strong Evidence' (High weight) and 'Supporting Evidence' (Low weight).
+    """
+    description_lines = []
+    
+    for category, keywords_dict in categories_config.items():
+        # Separate keys based on weights
+        # We assume weights >= 8 are 'Strong' (Primary), others are 'Secondary'
+        strong_triggers = [k for k, w in keywords_dict.items() if isinstance(w, (int, float)) and w >= 8]
+        weak_triggers = [k for k, w in keywords_dict.items() if isinstance(w, (int, float)) and w < 8]
+        
+        # Fallback if no weights exist or everything is low
+        if not strong_triggers and not weak_triggers:
+            strong_triggers = list(keywords_dict.keys())
+
+        desc = f"- **{category}**:\n"
+        if strong_triggers:
+            desc += f"    * STRONG Visual/Text Indicators (Match immediately if seen): {', '.join(strong_triggers[:8])}\n"
+        if weak_triggers:
+            desc += f"    * Supporting Indicators (Need multiple to confirm): {', '.join(weak_triggers[:8])}\n"
+        
+        description_lines.append(desc)
+    
+    return "\n".join(description_lines)
+
+
+
+
+
+def classify_image_with_llm(image_path, categories_config, business_type):
+    """
+    Sends image to Vision LLM with weighted context instructions.
+    """
+    import requests
+    from configurations.params import LLM_VISION_ENDPOINT
+
+    # 1. Prepare Weighted Context
+    category_instructions = format_category_context(categories_config)
+    
+    prompt = f"""
+    You are an expert Document Classification AI for the business line: {business_type}.
+    
+    Task: specific classification of the document image provided.
+    
+    GUIDELINES:
+    1. **Visual Layout**: Use your vision capabilities. If the document looks like an ID card, Passport, or Driver License, prioritize those categories over text-heavy ones like 'MOM' or 'BR'.
+    2. **Weighted Matching**: I have provided "STRONG" and "Supporting" indicators below. 
+       - If you see a **STRONG Indicator**, classify immediately.
+       - If you only see **Supporting Indicators**, you need strong context or multiple matches to classify.
+    
+    CATEGORY DEFINITIONS:
+    {category_instructions}
+    
+    Instructions:
+    - Return ONLY the category name.
+    - If the image matches NONE of the specific categories, return 'UNKNOWN_DOCTYPE'.
+    - Do not output the weight scores, just the final class.
+    """
+
+    # 2. Prepare Payload (Multipart upload example)
+    files = {
+        'file': open(image_path, 'rb')
+    }
+    # Some LLMs accept 'data' or 'json'. Adjust if your internal API expects a different format.
+    data = {
+        'prompt': prompt,
+        'model': 'your-vision-model-name', # e.g., gpt-4-vision or equivalent
+        'temperature': 0.1 # Low temperature for consistency
+    }
+
+    try:
+        response = requests.post(LLM_VISION_ENDPOINT, files=files, data=data, verify=False, timeout=30)
+        files['file'].close() # Ensure file is closed
+        
+        response.raise_for_status()
+        
+        # 3. Parse Output
+        result = response.json()
+        
+        # Adjust this path to match your internal API response structure
+        # Common patterns: result['choices'][0]['message']['content'] OR result['output']
+        prediction = result.get('output', 'UNKNOWN_DOCTYPE').strip()
+        
+        # Clean cleanup (remove quotes or periods)
+        prediction = re.sub(r"['\".]", "", prediction)
+
+        # 4. Final Validation
+        # If the LLM returns a valid category key, accept it.
+        if prediction in categories_config:
+            return prediction, 0.99
+        else:
+            return "UNKNOWN_DOCTYPE", 0
+
+    except Exception as e:
+        print(f"LLM Classification Error for {image_path}: {e}")
+        return "UNKNOWN_DOCTYPE", 0
+
+
