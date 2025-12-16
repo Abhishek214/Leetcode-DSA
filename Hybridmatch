@@ -1,0 +1,175 @@
+import os
+import re
+import json
+import requests
+from configurations.params import LLM_VISION_ENDPOINT, business_categories, folder_to_label
+
+def format_category_hybrid_context(categories_config):
+    """
+    Creates a detailed rubric that combines Keyword Scoring with Contextual clues.
+    """
+    rubric_lines = []
+    
+    for category, keywords_dict in categories_config.items():
+        rubric_lines.append(f"### CATEGORY: {category}")
+        
+        # 1. Sort keywords by weight
+        sorted_keywords = sorted(
+            keywords_dict.items(), 
+            key=lambda item: item[1] if isinstance(item[1], (int, float)) else 0, 
+            reverse=True
+        )
+        
+        # 2. Add Scoring Rules
+        rubric_lines.append(f"   - **Keywords & Weights**:")
+        for keyword, weight in sorted_keywords[:12]: 
+            rubric_lines.append(f"      * Found text '{keyword}': Add {weight} pts")
+        
+        # 3. Add Contextual Clue (Derived from category name/top keywords)
+        rubric_lines.append(f"   - **Visual/Context Context**: Document usually contains terms like {', '.join(list(keywords_dict.keys())[:3])} or follows a standard {category} layout.")
+        rubric_lines.append("") 
+    
+    return "\n".join(rubric_lines)
+
+def classify_image_hybrid(image_path, categories_config, business_type):
+    """
+    Sends image to Vision LLM with instructions for Hybrid (Score + Context) evaluation.
+    """
+    # 1. Prepare Rubric
+    rubric = format_category_hybrid_context(categories_config)
+    
+    prompt = f"""
+    You are a Document Classification Specialist for business line: {business_type}.
+    
+    Task: Classify the document image into exactly one category based on SCORING and CONTEXT.
+    
+    RUBRIC:
+    {rubric}
+    
+    EVALUATION PROCESS:
+    1. **Calculate Keyword Score**: Scan for keywords listed in the Rubric. Sum their weights.
+    2. **Analyze Context**: Look at the document layout, headers, and overall meaning. Does it visually match a category?
+    
+    DECISION RULES (Priority Order):
+    1. **High Score Match**: If Keyword Score >= 10, Classify as that Category. (DO NOT return UNKNOWN).
+    2. **Contextual Rescue**: If Keyword Score is 5-9 BUT the visual layout/context strongly matches the category, Classify as that Category.
+    3. **Failure**: If Score < 5 and Context is weak, return 'UNKNOWN_DOCTYPE'.
+    
+    OUTPUT FORMAT:
+    Provide response in strict JSON format:
+    {{
+        "category": "The_Category_Name",
+        "score": <calculated_integer_score>,
+        "reasoning": "Brief reason for decision (e.g., 'Score 12 from keywords X, Y' or 'Score 6 but visual layout confirms Passport')"
+    }}
+    """
+
+    # 2. Prepare Payload
+    files = {
+        'file': open(image_path, 'rb')
+    }
+    data = {
+        'prompt': prompt,
+        'model': 'your-vision-model-name',
+        'temperature': 0.1 # Low temp for consistent logic
+    }
+
+    try:
+        response = requests.post(LLM_VISION_ENDPOINT, files=files, data=data, verify=False, timeout=45)
+        files['file'].close()
+        response.raise_for_status()
+        
+        # 3. Parse JSON Output
+        api_result = response.json()
+        raw_output = api_result.get('output', '{}') # Adjust key based on your API
+        
+        # Attempt to clean and parse JSON
+        try:
+            clean_json = raw_output.replace("```json", "").replace("```", "").strip()
+            decision = json.loads(clean_json)
+            
+            category = decision.get("category", "UNKNOWN_DOCTYPE")
+            score = decision.get("score", 0)
+            
+            # Validation: Ensure category exists in our config
+            if category not in categories_config:
+                category = "UNKNOWN_DOCTYPE"
+                
+            return category, score
+
+        except json.JSONDecodeError:
+            # Fallback if LLM output isn't valid JSON
+            print(f"LLM JSON Error: {raw_output}")
+            return "UNKNOWN_DOCTYPE", 0
+
+    except Exception as e:
+        print(f"LLM Classification Error for {image_path}: {e}")
+        return "UNKNOWN_DOCTYPE", 0
+
+def classify_pages(image_paths, business, categories, logger):
+    """
+    Orchestrator for Classification.
+    """
+    data = {}
+    scores = {}
+
+    logger.info(f"Classifying {len(image_paths)} pages using Hybrid LLM Logic...")
+
+    # Load Business Config
+    if business in business_categories:
+        categories_config = business_categories[business]["categories"]
+    else:
+        categories_config = categories
+
+    # --- CLASSIFICATION LOOP ---
+    for i, img_path in enumerate(image_paths):
+        page_num = i + 1
+        
+        # Call Hybrid LLM Function
+        label, score = classify_image_hybrid(img_path, categories_config, business)
+        
+        scores[page_num] = score
+        data[page_num] = label
+        
+        logger.info(f"Page {page_num} -> Class: {label} | Score: {score}")
+        
+        # Cleanup Temp File
+        try:
+            os.remove(img_path)
+        except:
+            pass
+
+    # --- GROUPING LOGIC (Standard from original code) ---
+    pages = sorted(data.keys())
+    result = []
+    
+    while pages:
+        start = pages[0]
+        classification = data[start]
+        
+        # 1. Single Page Docs
+        if classification in ['HKID', 'Passport', 'Driving_license', 'National_identity_card', 
+                              'Energy_bill', 'Water_bill', 'China_2_way_permit', 'utility_bill']:
+            result.append((start, start + 1, classification))
+            pages.remove(start)
+            continue
+            
+        # 2. Multi-Page Logic (NARI, ND2A, MOM, BR)
+        if classification in ['NARI', 'ND2A', 'MOM', 'BR', 'NAR1']:
+            end = start
+            while end + 1 in data and data[end + 1] in [classification, 'UNKNOWN_DOCTYPE']:
+                end += 1
+            result.append((start, end + 1, classification))
+            for k in range(start, end + 1):
+                if k in pages: pages.remove(k)
+            continue
+
+        # 3. Default/Unknown
+        if classification in folder_to_label or classification in categories_config:
+             result.append((start, start + 1, classification))
+             pages.remove(start)
+        else:
+             result.append((start, start + 1, 'UNKNOWN_DOCTYPE'))
+             pages.remove(start)
+
+    return result, scores
