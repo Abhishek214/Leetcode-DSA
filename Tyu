@@ -1,0 +1,158 @@
+import os
+import re
+import requests
+from configurations.params import LLM_VISION_ENDPOINT, business_categories, folder_to_label
+
+def format_category_scoring_context(categories_config):
+    """
+    Converts category config into a Scoring Rubric for the LLM.
+    Outputs exact weights for each keyword.
+    """
+    scoring_lines = []
+    
+    for category, keywords_dict in categories_config.items():
+        scoring_lines.append(f"### Category: {category}")
+        
+        # Sort keywords by weight (highest first) to prioritize checking them
+        sorted_keywords = sorted(keywords_dict.items(), key=lambda item: item[1] if isinstance(item[1], (int, float)) else 0, reverse=True)
+        
+        # Format: - "Keyword": [Weight points]
+        for keyword, weight in sorted_keywords[:15]: # Limit to top 15 to fit context
+            scoring_lines.append(f"   - Match term '{keyword}': Add {weight} points")
+        
+        scoring_lines.append("") # Empty line for readability
+    
+    return "\n".join(scoring_lines)
+
+def classify_image_with_llm_scoring(image_path, categories_config, business_type):
+    """
+    Sends image to Vision LLM with instructions to CALCULATE scores.
+    """
+    # 1. Prepare Scoring Context
+    scoring_rubric = format_category_scoring_context(categories_config)
+    
+    # Define Threshold Logic based on business type (mimicking original code)
+    # Original code: if max_score < 10: return UNKNOWN
+    threshold_instruction = "If the highest calculated score is LESS THAN 10, the classification is 'UNKNOWN_DOCTYPE'."
+    
+    prompt = f"""
+    You are a Document Classification Scoring Engine for the business: {business_type}.
+    
+    Your Goal: Analyze the document image, detect keywords, calculate scores for each category, and determine the winner.
+    
+    SCORING RUBRIC:
+    {scoring_rubric}
+    
+    ALGORITHM TO FOLLOW:
+    1. Scan the document text/visuals for the keywords listed above.
+    2. For every keyword found, add its specific points to that Category's total score.
+    3. Compare the final totals.
+    4. {threshold_instruction}
+    5. Otherwise, the winner is the category with the Highest Score.
+    
+    OUTPUT FORMAT:
+    Return ONLY the winning category name. (e.g., 'MOM', 'BR', 'Passport').
+    """
+
+    # 2. Prepare Payload
+    files = {
+        'file': open(image_path, 'rb')
+    }
+    data = {
+        'prompt': prompt,
+        'model': 'your-vision-model-name',
+        'temperature': 0.0 # Strict determinism for math/logic
+    }
+
+    try:
+        response = requests.post(LLM_VISION_ENDPOINT, files=files, data=data, verify=False, timeout=45)
+        files['file'].close()
+        
+        response.raise_for_status()
+        
+        # 3. Parse Output
+        result = response.json()
+        prediction = result.get('output', 'UNKNOWN_DOCTYPE').strip()
+        
+        # Cleanup
+        prediction = re.sub(r"['\".]", "", prediction)
+
+        # 4. Validation
+        if prediction in categories_config:
+            # We assign a high confidence because the LLM followed the scoring logic
+            return prediction, 100 
+        else:
+            return "UNKNOWN_DOCTYPE", 0
+
+    except Exception as e:
+        print(f"LLM Scoring Error for {image_path}: {e}")
+        return "UNKNOWN_DOCTYPE", 0
+
+def classify_pages(image_paths, business, categories, logger):
+    """
+    Classifies pages using LLM-based Scoring Logic.
+    """
+    data = {}
+    scores = {}
+
+    logger.info(f"Classifying {len(image_paths)} pages using LLM Scoring Logic...")
+
+    # Resolve specific category config
+    if business in business_categories:
+        categories_config = business_categories[business]["categories"]
+    else:
+        categories_config = categories
+
+    # --- CLASSIFICATION LOOP ---
+    for i, img_path in enumerate(image_paths):
+        page_num = i + 1
+        
+        # Call the Scoring LLM function
+        label, score = classify_image_with_llm_scoring(img_path, categories_config, business)
+        
+        scores[page_num] = score
+        data[page_num] = label
+        
+        logger.info(f"Page {page_num} ({img_path}) -> LLM Scored As: {label}")
+        
+        # Cleanup
+        try:
+            os.remove(img_path)
+        except:
+            pass
+
+    # --- GROUPING LOGIC (Identical to original) ---
+    pages = sorted(data.keys())
+    result = []
+    
+    while pages:
+        start = pages[0]
+        classification = data[start]
+        
+        # 1. Single Page Docs
+        if classification in ['HKID', 'Passport', 'Driving_license', 'National_identity_card', 
+                              'Energy_bill', 'Water_bill', 'China_2_way_permit', 'utility_bill']:
+            result.append((start, start + 1, classification))
+            pages.remove(start)
+            continue
+            
+        # 2. Multi-Page Logic (NARI, ND2A, MOM, BR)
+        if classification in ['NARI', 'ND2A', 'MOM', 'BR', 'NAR1']:
+            end = start
+            while end + 1 in data and data[end + 1] in [classification, 'UNKNOWN_DOCTYPE']:
+                end += 1
+            
+            result.append((start, end + 1, classification))
+            for k in range(start, end + 1):
+                if k in pages: pages.remove(k)
+            continue
+
+        # 3. Default/Unknown
+        if classification in folder_to_label or classification in categories_config:
+             result.append((start, start + 1, classification))
+             pages.remove(start)
+        else:
+             result.append((start, start + 1, 'UNKNOWN_DOCTYPE'))
+             pages.remove(start)
+
+    return result, scores
