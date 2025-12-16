@@ -1,0 +1,122 @@
+def format_category_hybrid_context(categories_config):
+    """
+    Creates a detailed rubric using the new Priority-based structure.
+    Assigns static scores: High=10, Medium=5, Low=2.
+    """
+    rubric_lines = []
+    
+    # Define static scores for priorities
+    # High=10 ensures a single strong match triggers the >=10 threshold
+    PRIORITY_SCORES = {"High": 10, "Medium": 5, "Low": 2}
+    
+    for category, priority_dict in categories_config.items():
+        rubric_lines.append(f"### CATEGORY: {category}")
+        rubric_lines.append(f"   - **Scoring Rules**:")
+        
+        # Iterate through High, Medium, Low keys in the new config
+        context_keywords = []
+        
+        for priority in ["High", "Medium", "Low"]:
+            if priority in priority_dict and priority_dict[priority]:
+                # Get the list of keywords for this priority
+                keywords = priority_dict[priority]
+                score = PRIORITY_SCORES.get(priority, 0)
+                
+                # Add to rubric
+                # Join keywords with quotes for clarity
+                kwd_str = ", ".join([f"'{k}'" for k in keywords])
+                rubric_lines.append(f"      * [{priority} Priority] (+{score} pts): Look for {kwd_str}")
+                
+                # Collect high/medium keywords for the context description
+                if priority in ["High", "Medium"]:
+                    context_keywords.extend(keywords[:3])
+
+        # Add Contextual Clue
+        # Use the collected top keywords to describe the "vibe" of the document
+        example_terms = ", ".join(context_keywords[:4]) if context_keywords else "standard terms"
+        rubric_lines.append(f"   - **Visual Context**: Document typically contains terms like {example_terms} or follows a standard {category} layout.")
+        rubric_lines.append("") 
+    
+    return "\n".join(rubric_lines)
+
+
+
+
+
+def classify_image_hybrid(image_path, categories_config, business_type):
+    """
+    Sends image to Vision LLM with Priority-based Scoring instructions.
+    """
+    # 1. Prepare Rubric
+    rubric = format_category_hybrid_context(categories_config)
+    
+    prompt = f"""
+    You are a Document Classification Specialist for business line: {business_type}.
+    
+    Task: Classify the document image into exactly one category based on SCORING and CONTEXT.
+    
+    SCORING SYSTEM:
+    - **High Priority Match**: 10 Points (Found a "High" keyword)
+    - **Medium Priority Match**: 5 Points (Found a "Medium" keyword)
+    - **Low Priority Match**: 2 Points (Found a "Low" keyword)
+    
+    RUBRIC:
+    {rubric}
+    
+    EVALUATION PROCESS:
+    1. **Calculate Keyword Score**: Scan for keywords listed in the Rubric. Add points based on their priority level.
+    2. **Analyze Context**: Look at the document layout, headers, and overall meaning.
+    
+    DECISION RULES (Priority Order):
+    1. **High Score Match**: If Total Score >= 10, Classify as that Category.
+       *(Note: A single 'High' match is enough to pass this threshold.)*
+    2. **Contextual Rescue**: If Score is 5-9 BUT visual layout matches the category strongly, Classify as that Category.
+    3. **Failure**: If Score < 5 and Context is weak, return 'UNKNOWN_DOCTYPE'.
+    
+    OUTPUT FORMAT:
+    Provide response in strict JSON format:
+    {{
+        "category": "The_Category_Name",
+        "score": <calculated_integer_score>,
+        "reasoning": "Brief reason (e.g., 'Found High priority term 'Written Resolution' (10 pts)')"
+    }}
+    """
+
+    # 2. Prepare Payload
+    files = {
+        'file': open(image_path, 'rb')
+    }
+    data = {
+        'prompt': prompt,
+        'model': 'your-vision-model-name',
+        'temperature': 0.1
+    }
+
+    try:
+        response = requests.post(LLM_VISION_ENDPOINT, files=files, data=data, verify=False, timeout=45)
+        files['file'].close()
+        response.raise_for_status()
+        
+        # 3. Parse JSON Output
+        api_result = response.json()
+        raw_output = api_result.get('output', '{}')
+        
+        try:
+            clean_json = raw_output.replace("```json", "").replace("```", "").strip()
+            decision = json.loads(clean_json)
+            
+            category = decision.get("category", "UNKNOWN_DOCTYPE")
+            score = decision.get("score", 0)
+            
+            if category not in categories_config:
+                category = "UNKNOWN_DOCTYPE"
+                
+            return category, score
+
+        except json.JSONDecodeError:
+            print(f"LLM JSON Error: {raw_output}")
+            return "UNKNOWN_DOCTYPE", 0
+
+    except Exception as e:
+        print(f"LLM Classification Error for {image_path}: {e}")
+        return "UNKNOWN_DOCTYPE", 0
