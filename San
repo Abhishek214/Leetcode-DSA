@@ -1,0 +1,168 @@
+import pandas as pd
+import requests
+import os
+import json
+
+# --- CONFIGURATION ---
+EXCEL_FILE_PATH = 'GCP_UAT_Test_results.xlsx'  # Path to your excel file
+BASE_PDF_FOLDER = r'C:\Path\To\Your\PDFs'      # Root folder where PDFs are stored
+API_ENDPOINT = 'https://api.your-domain.com/extract' # Your extraction API URL
+API_HEADERS = {'Authorization': 'Bearer YOUR_TOKEN'} # Add headers if needed
+
+# Mapping: Sheet Name -> Subfolder Name (if pdfs are organized by folders)
+# If all PDFs are in one big folder, you can ignore this specific mapping.
+DOC_TYPE_FOLDER_MAP = {
+    'Servicing_HKID': 'HKID_Docs',
+    'Servicing_MOM': 'MOM_Docs',
+    'Servicing_NAR1': 'NAR1_Docs',
+    # Add other sheets here
+}
+
+def get_api_extraction(file_path):
+    """
+    Sends file to API and returns a dictionary of extracted key-value pairs.
+    """
+    try:
+        with open(file_path, 'rb') as f:
+            files = {'file': f}
+            # Adjust 'files' or 'data' params based on your specific API documentation
+            response = requests.post(API_ENDPOINT, files=files, headers=API_HEADERS)
+        
+        if response.status_code == 200:
+            # Assuming API returns JSON like: {"Name": "Value", "Date": "Value"}
+            return response.json() 
+        else:
+            print(f"API Error {response.status_code}: {response.text}")
+            return {}
+    except Exception as e:
+        print(f"Request Failed: {e}")
+        return {}
+
+def normalize_text(text):
+    """
+    Cleans text for comparison (removes extra spaces, casing).
+    """
+    if pd.isna(text): return ""
+    return str(text).strip().lower()
+
+def process_sheet(sheet_name):
+    print(f"--- Processing Sheet: {sheet_name} ---")
+    
+    # Read the excel sheet. 
+    # Note: Based on the screenshot, the actual data table starts around Row 14.
+    # We might need to skip rows or define a header manually.
+    # Let's try reading from row 13 (header=12) based on the image structure.
+    try:
+        df = pd.read_excel(EXCEL_FILE_PATH, sheet_name=sheet_name, header=None)
+    except Exception as e:
+        print(f"Could not read sheet {sheet_name}: {e}")
+        return
+
+    # 1. Identify where the 'Sample Name' headers are.
+    # In the image, Row 13 (index 12) seems to contain specific file IDs like '203623236883'
+    # The structure looks slightly complex (merged cells). 
+    
+    # STRATEGY: Iterate through columns to find Sample Blocks.
+    # A sample block usually consists of 3 columns: Ground Truth | Extracted Value | Match
+    
+    # We will look for row 13 (index 12 in 0-based) for the file ID.
+    row_file_ids = 12 
+    row_attr_start = 14 # Where attributes like "Name in Chinese" start
+    
+    # Iterate columns in steps (assuming the 3-column structure per file)
+    # Column B (index 1) starts the first file.
+    
+    results = []
+    
+    # Iterate columns starting from B (index 1), skipping the "Attribute Name" column
+    # The pattern in the image seems to be: 
+    # Col B: Ground Truth, Col C: Extracted (Old), Col D: Match
+    # But the File ID is in the header cell above them.
+    
+    num_columns = df.shape[1]
+    
+    for col_idx in range(1, num_columns, 3): # Step by 3 for each sample block
+        # Get File ID from the header row
+        file_id_raw = df.iloc[row_file_ids, col_idx]
+        
+        if pd.isna(file_id_raw):
+            continue
+            
+        # Clean File ID (remove '1. ' or similar prefixes if present)
+        file_id = str(file_id_raw).split('.')[-1].strip() # Handles "1. 20362323..."
+        
+        print(f"Found Sample: {file_id}")
+        
+        # Locate PDF
+        subfolder = DOC_TYPE_FOLDER_MAP.get(sheet_name, '')
+        pdf_path = os.path.join(BASE_PDF_FOLDER, subfolder, f"{file_id}.pdf")
+        
+        # Determine actual PDF name if extension varies or naming is loose
+        if not os.path.exists(pdf_path):
+             # Fallback: search for file in folder
+             found = False
+             folder_path = os.path.join(BASE_PDF_FOLDER, subfolder)
+             if os.path.exists(folder_path):
+                 for f in os.listdir(folder_path):
+                     if file_id in f:
+                         pdf_path = os.path.join(folder_path, f)
+                         found = True
+                         break
+             if not found:
+                 print(f"File not found: {pdf_path}")
+                 continue
+
+        # Get New Extraction from API
+        api_data = get_api_extraction(pdf_path)
+        
+        # Compare Attributes
+        # Iterate down the rows for this column block until we hit "Accuracy" or empty
+        current_row = row_attr_start
+        while current_row < df.shape[0]:
+            attr_name = df.iloc[current_row, 0] # Column A has the attribute name
+            
+            if pd.isna(attr_name) or str(attr_name).lower() == 'accuracy':
+                break
+                
+            ground_truth = df.iloc[current_row, col_idx]
+            
+            # Map Excel Attribute Name to API JSON Key
+            # You might need a dictionary here if names don't match exactly
+            # e.g., "Name in Chinese" -> "name_cn"
+            api_value = api_data.get(attr_name, "") 
+            
+            # Comparison Logic
+            is_match = 1 if normalize_text(ground_truth) == normalize_text(api_value) else 0
+            
+            print(f"   Attr: {attr_name} | GT: {ground_truth} | API: {api_value} | Match: {is_match}")
+            
+            results.append({
+                'Sheet': sheet_name,
+                'FileID': file_id,
+                'Attribute': attr_name,
+                'GroundTruth': ground_truth,
+                'API_Value': api_value,
+                'Match': is_match
+            })
+            
+            current_row += 1
+
+    return pd.DataFrame(results)
+
+# --- MAIN EXECUTION ---
+
+# List of sheets to process (or use pd.ExcelFile(path).sheet_names to do all)
+target_sheets = ['Servicing_HKID'] 
+
+all_results = []
+
+for sheet in target_sheets:
+    df_res = process_sheet(sheet)
+    if df_res is not None:
+        all_results.append(df_res)
+
+# Save Final Report
+if all_results:
+    final_df = pd.concat(all_results)
+    final_df.to_csv('Validation_Report.csv', index=False)
+    print("Validation Complete. Saved to Validation_Report.csv")
