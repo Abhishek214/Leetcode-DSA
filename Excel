@@ -1,0 +1,92 @@
+import pandas as pd
+import requests
+import os
+import openpyxl
+import shutil
+from datetime import datetime
+
+# --- CONFIGURATION ---
+ORIGINAL_FILE = 'GCP_UAT_Test_results.xlsx'
+BASE_FOLDER = r'C:\Path\To\Your\Documents' 
+API_ENDPOINT = 'https://api.your-domain.com/extract'
+API_HEADERS = {'Authorization': 'Bearer YOUR_TOKEN'}
+
+def get_timestamped_filename(original_path):
+    """Creates a filename like 2024-05-20_GCP_UAT_Test_results.xlsx"""
+    date_prefix = datetime.now().strftime("%Y-%m-%d")
+    directory, filename = os.path.split(original_path)
+    new_filename = f"{date_prefix}_{filename}"
+    return os.path.join(directory, new_filename)
+
+def run_extraction_and_update():
+    # 1. Create the new copy first
+    new_file_path = get_timestamped_filename(ORIGINAL_FILE)
+    shutil.copy2(ORIGINAL_FILE, new_file_path)
+    print(f"Created new working copy: {new_file_path}")
+
+    # 2. Load the NEW copy for editing
+    wb = openpyxl.load_workbook(new_file_path)
+    
+    for sheet_name in wb.sheetnames:
+        ws = wb[sheet_name]
+        print(f"--- Processing Sheet: {sheet_name} ---")
+
+        # Row 13: File Name | Row 15: Start of Attributes
+        row_file_header = 13  
+        row_attr_start = 15   
+        col_attr_names = 1    # Column A
+        
+        # Iterate through sample blocks (Columns B, E, H...)
+        for col_idx in range(2, ws.max_column + 1, 3):
+            file_cell_value = ws.cell(row=row_file_header, column=col_idx).value
+            
+            if not file_cell_value:
+                continue
+
+            # Extract Filename (handles "4. HKID_15.pdf")
+            parts = str(file_cell_value).split(' ', 1)
+            filename = parts[1].strip() if len(parts) > 1 else parts[0].strip()
+            
+            file_path = os.path.join(BASE_FOLDER, filename)
+            
+            if not os.path.exists(file_path):
+                print(f"File {filename} not found in folder. Skipping...")
+                continue
+
+            # 3. Call API for the specific file
+            try:
+                with open(file_path, 'rb') as f:
+                    response = requests.post(API_ENDPOINT, files={'file': f}, headers=API_HEADERS)
+                    api_data = response.json() if response.status_code == 200 else {}
+            except Exception as e:
+                print(f"API Error for {filename}: {e}")
+                api_data = {}
+
+            # 4. Write Results into the NEW Excel copy
+            curr_row = row_attr_start
+            while curr_row <= ws.max_row:
+                attr_name_cell = ws.cell(row=curr_row, column=col_attr_names).value
+                if not attr_name_cell or "accuracy" in str(attr_name_cell).lower():
+                    break
+                
+                attr_name = str(attr_name_cell).strip()
+                ground_truth = str(ws.cell(row=curr_row, column=col_idx).value or "").strip()
+                
+                # Get value from API response
+                extracted_val = str(api_data.get(attr_name, "Extraction Failed")).strip()
+                
+                # Comparison (Case-insensitive)
+                is_match = 1 if ground_truth.lower() == extracted_val.lower() else 0
+                
+                # Update 'Extracted Value' (col + 1) and 'Match' (col + 2)
+                ws.cell(row=curr_row, column=col_idx + 1).value = extracted_val
+                ws.cell(row=curr_row, column=col_idx + 2).value = is_match
+                
+                curr_row += 1
+
+    # 5. Save the modified copy
+    wb.save(new_file_path)
+    print(f"Successfully updated and saved: {new_file_path}")
+
+if __name__ == "__main__":
+    run_extraction_and_update()
