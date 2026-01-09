@@ -1,0 +1,338 @@
+# ==================== Health Endpoint ====================
+class HealthEndpoint:
+    """GET /health - System Health & Version Information"""
+    
+    REQUEST_BODY = None  # GET request has no body
+    
+    RESPONSE_BODY = {
+        200: {
+            "description": "Successful health check",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "healthy": "true",
+                        "efimid": "9929948",
+                        "server": "hostname-example",
+                        "componentName": "dcrest-visual-extraction-service",
+                        "version": "1.0.0",
+                        "description": "Description of this service",
+                        "sourceCodeRepoUrl": "https://alm-github.wellsfargo.com/abcd/dcrest-visual-extraction-service",
+                        "documentationUrl": "N/A",
+                        "apiSpecificationUrl": "https://dcrest-visual-extraction-service-url/openapi.json",
+                        "businessImpact": "This service has business impact",
+                        "runtime": {
+                            "name": "PYTHON",
+                            "version": "3.8.10"
+                        },
+                        "uptimeInMillis": 123456789
+                    }
+                }
+            }
+        }
+    }
+
+
+# ==================== Ready Endpoint ====================
+class ReadyEndpoint:
+    """GET /ready - Readiness Probe"""
+    
+    REQUEST_BODY = None  # GET request has no body
+    
+    RESPONSE_BODY = {
+        200: {
+            "description": "Service is ready",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "server": "hostname-example",
+                        "service_name": "dcrest-visual-extraction-service",
+                        "status": "alive"
+                    }
+                }
+            }
+        }
+    }
+
+
+# ==================== Authentication Endpoint ====================
+class AuthEndpoint:
+    """POST /auth/login - User Authentication"""
+    
+    REQUEST_BODY = {
+        "requestBody": {
+            "content": {
+                "application/x-www-form-urlencoded": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "username": {
+                                "type": "string",
+                                "description": "LDAP username for authentication",
+                                "example": "john.doe"
+                            },
+                            "password": {
+                                "type": "string",
+                                "format": "password",
+                                "description": "User password",
+                                "example": "SecurePassword123!"
+                            }
+                        },
+                        "required": ["username", "password"]
+                    }
+                }
+            }
+        }
+    }
+    
+    RESPONSE_BODY = {
+        200: {
+            "description": "Authentication successful",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJqb2huLmRvZSIsImV4cCI6MTYzOTU4NzYwMH0.abc123def456",
+                        "token_type": "bearer",
+                        "expires_in": 3600,
+                        "user": {
+                            "username": "john.doe",
+                            "subscriber": "Dcrest-UI"
+                        }
+                    }
+                }
+            }
+        },
+        401: {
+            "description": "Authentication failed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Invalid username or password"
+                    }
+                }
+            }
+        },
+        403: {
+            "description": "User not authorized",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "User is not authorized for this application"
+                    }
+                }
+            }
+        }
+    }
+
+
+# ==================== Secret Receipt Endpoint ====================
+class SecretReceiptEndpoint:
+    """POST /secret-receipt - Credential Management"""
+    
+    REQUEST_BODY = {
+        "requestBody": {
+            "content": {
+                "application/x-www-form-urlencoded": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "secretName": {
+                                "type": "string",
+                                "description": "Name of the secret key",
+                                "example": "dcrestai-gb-dcrest-svc-aco-doctager-pwd"
+                            },
+                            "secretValue": {
+                                "type": "string",
+                                "description": "Value of the secret",
+                                "example": "encrypted_secret_value_here"
+                            }
+                        },
+                        "required": ["secretName", "secretValue"]
+                    }
+                }
+            }
+        }
+    }
+    
+    RESPONSE_BODY = {
+        200: {
+            "description": "Secret received successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "secretName": "dcrestai-gb-dcrest-svc-aco-doctager-pwd",
+                        "secretValue": "***********"
+                    }
+                }
+            }
+        }
+    }
+
+
+# ==================== Visual DCrest Health Endpoint ====================
+class VisualDcrestHealthEndpoint:
+    """GET /visual_dcrest/health - Router Health Check"""
+    
+    REQUEST_BODY = None  # GET request has no body
+    
+    RESPONSE_BODY = {
+        201: {
+            "description": "Visual dcrest router is alive",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "server": "hostname-example",
+                        "service_name": "processing documents for signature detection and recognition",
+                        "status": "alive"
+                    }
+                }
+            }
+        }
+    }
+
+
+# ==================== Visual DCrest Extract Endpoint ====================
+class VisualDcrestExtractEndpoint:
+    """POST /visual_dcrest/extract - Visual Document Analysis"""
+    
+    REQUEST_BODY = {
+        "requestBody": {
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "DCREST_FILE": {
+                                "type": "string",
+                                "format": "binary",
+                                "description": "Document file to process (PDF, DOCX, PNG, JPEG, JPG, TIFF, TIF)"
+                            },
+                            "document_ui_id": {
+                                "type": "string",
+                                "description": "Optional document UI identifier",
+                                "example": "doc-12345-uuid"
+                            }
+                        },
+                        "required": ["DCREST_FILE"]
+                    }
+                }
+            }
+        }
+    }
+    
+    RESPONSE_BODY = {
+        201: {
+            "description": "Document processed successfully",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "title": "Visual Dcrest Extraction",
+                        "processing_start_time": "2026-01-09 10:30:00.123456",
+                        "processing_end_time": "2026-01-09 10:30:15.654321",
+                        "document_ui_id": "doc-12345-uuid",
+                        "document_backend_id": "",
+                        "subsections": [
+                            {
+                                "subsection_title": "Analysis",
+                                "values": [
+                                    {
+                                        "kv_pairs": {
+                                            "data_title": "",
+                                            "values": [
+                                                {
+                                                    "label_name": "Signature",
+                                                    "label_value": "Signature page : 1",
+                                                    "confidence_score": 0.9543,
+                                                    "bbox": [100, 200, 300, 400],
+                                                    "page_number": 1,
+                                                    "page_width": 1920,
+                                                    "page_height": 2560,
+                                                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+                                                    "extracted_text": "John Doe",
+                                                    "text_confidence": 0.92,
+                                                    "text_bbox": [110, 210, 290, 390]
+                                                },
+                                                {
+                                                    "label_name": "Barcode",
+                                                    "label_value": "Barcode page : 1 Barcode",
+                                                    "confidence_score": 0.8765,
+                                                    "bbox": [500, 100, 700, 200],
+                                                    "page_number": 1,
+                                                    "page_width": 1920,
+                                                    "page_height": 2560,
+                                                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+                                                    "barcode_value": "1234567890128"
+                                                },
+                                                {
+                                                    "label_name": "Qrcode",
+                                                    "label_value": "Qrcode page : 1 QR-code",
+                                                    "confidence_score": 0.9234,
+                                                    "bbox": [800, 300, 1000, 500],
+                                                    "page_number": 1,
+                                                    "page_width": 1920,
+                                                    "page_height": 2560,
+                                                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+                                                    "qrcode_value": "https://example.com/document/12345"
+                                                },
+                                                {
+                                                    "label_name": "Chop",
+                                                    "label_value": "Chop page : 2",
+                                                    "confidence_score": 0.8912,
+                                                    "bbox": [1200, 400, 1500, 700],
+                                                    "page_number": 2,
+                                                    "page_width": 1920,
+                                                    "page_height": 2560,
+                                                    "image_base64": "iVBORw0KGgoAAAANSUhEUgAA...",
+                                                    "chop_data": "HSBC Bank Stamp",
+                                                    "chop_confidence": 0.87,
+                                                    "chop_bbox": [1210, 410, 1490, 690]
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        401: {
+            "description": "Authentication failed",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "Authentication Failed"
+                    }
+                }
+            }
+        },
+        500: {
+            "description": "Internal server error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "error_code": "500",
+                        "error": "An error occurred while processing the document"
+                    }
+                }
+            }
+        }
+    }
+
+
+# ==================== Documentation Endpoint ====================
+class DocsEndpoint:
+    """GET /docs - Interactive API Documentation"""
+    
+    REQUEST_BODY = None  # GET request has no body
+    
+    RESPONSE_BODY = {
+        200: {
+            "description": "Swagger UI HTML page",
+            "content": {
+                "text/html": {
+                    "example": "<!DOCTYPE html><html>...</html>"
+                }
+            }
+        }
+    }
