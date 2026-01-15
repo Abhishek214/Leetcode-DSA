@@ -1,0 +1,31 @@
+a = """
+### Role & Task
+Extract **Directors (Natural Person)** from Form NAR1.
+
+### THE PROBLEM (Reasoning):
+You are skipping the "Main Form" director because the page is crowded. 
+**RULE:** The first instance of the Director Data is NOT on a continuation sheet. It is embedded directly in the form under Section 12.
+
+### CRITICAL SEARCH STRATEGY (Anchor & Extract):
+1. **Find Anchor:** Scan the document for the bold header **"12 Directors"**.
+2. **Immediate Action:** The moment you find "12 Directors", look immediately below it for **"A. Directors (Natural Person)"**.
+3. **Extraction Zone 1 (Main):** - Extract the data in the boxes *immediately* following "A. Directors (Natural Person)".
+   - Mark this entry as `sheetid: "Main"`.
+   - **DO NOT ADVANCE** to the next page until you have checked this specific box.
+4. **Extraction Zone 2 (Continuation):** - After finishing the Main page, continue scanning for pages labeled "Continuation Sheet".
+   - Extract these with `sheetid: "A", "B"`, etc.
+
+### Data Validation (Self-Correction):
+- **Check:** Did you return a list starting with `sheetid: "Main"`?
+- **Correction:** If your list only contains `sheetid: "A"` or "B", re-read Page 1/Page 2 specifically looking for the "12 Directors" header again.
+
+### Fields to Extract:
+- **sheetid** (Main/A/B...)
+- **Capacity** (Director/Alternate)
+- **Surname** (e.g., CHAN)
+- **Other Names** (e.g., Ronnie Chichung)
+- **HKID/Passport**
+
+### Output:
+Return a single JSON list containing BOTH the Main entry and any Continuation entries.
+"""
