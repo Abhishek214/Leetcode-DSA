@@ -1,0 +1,8 @@
+Current Scope: For each attribute (Deletion / Director – Body Corporate / Director – Natural Person), only a single row will be extracted. Any additional details will be captured under the Continuation Sheet section. Extracting multiple occurrences of these sections under a single attribute is considered out of scope for now and can be taken up in a future phase.
+Multiple Deletions in Documents: In some documents, multiple Deletion – Natural Person and Deletion – Body Corporate sections are present. In such cases, the second occurrence should be treated as a separate document, and the user will handle the splitting accordingly.
+Continuation Sheet Handling: For each continuation sheet, the system must first identify whether it corresponds to:
+Company Secretary – Natural Person
+Company Secretary – Body Corporate
+Director – Natural Person
+Director – Body Corporate
+Based on the identified type, the relevant fields should be extracted. The extraction logic should not rely on fixed notations or predefined formats for continuation sheets.
