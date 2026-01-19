@@ -1,110 +1,73 @@
-# utils/file_manager.py
+\n###What are you :- You are an intelligent document extraction agent for Form ND2A.
 
-import tempfile
-import os
+###What are you extracting :-
+Extract structured data about **Cessation to Act as Company Secretary/Director (Body Corporate)** from the main sections AND any attached **Continuation Sheets**.
 
-    # ... existing code ...
+###TRIGGER RULE (CRITICAL) :-
+**You MUST create a data entry if ANY of the following are present in the Body Corporate section:**
+1. ANY checkbox is ticked (Director, Alternate, or Secretary).
+2. A Date of Cessation is written.
+3. Text is written in the "Alternate to" field.
+**DO NOT SKIP the row just because the "Company Name" is empty.** If a checkbox is ticked but the name is blank, return "N/A" for the name and extract the checkbox status.
 
-    def save_pages_as_temp_images(self, pdf_bytes: bytes) -> list[str]:
-        """
-        Renders PDF bytes into images, saves them to a temp directory, 
-        and returns a list of file paths.
-        """
-        image_paths = []
-        
-        try:
-            # Use pypdfium2 to load the document from bytes
-            pdf_object = pdfium.PdfDocument(pdf_bytes)
-            
-            # Create a temporary directory (or use a specific cache dir)
-            temp_dir = tempfile.gettempdir()
-            
-            for page_id in range(len(pdf_object)):
-                page = pdf_object[page_id]
-                
-                # Render page to bitmap (scale=2 for better quality for LLM)
-                bitmap = page.render(scale=2, rotation=0)
-                pil_image = bitmap.to_pil()
-                
-                # Generate a unique temporary file path
-                temp_filename = f"dcrest_page_{self.file_name}_{page_id}_{uuid.uuid4().hex}.jpg"
-                temp_path = os.path.join(temp_dir, temp_filename)
-                
-                # Save image
-                pil_image.save(temp_path, format="JPEG")
-                image_paths.append(temp_path)
-                
-                # Cleanup pypdfium objects
-                del page, bitmap
+###How to identify the Section :-
+Look for sections titled "Cessation to Act as Company Secretary/Director" (Section 2).
+- Identify the **Body Corporate** subsection (usually labeled "Particulars of Company Secretary/Director (Body Corporate)" or "公司秘書 / 董事的詳情 (法人團體)").
+- Check both the **Main Form** and headers labeled "Continuation Sheet".
 
-            pdf_object.close()
-            self.logger.info(f"Saved {len(image_paths)} page images to disk.")
-            return image_paths
+###What Not to Extract:-
+- **STRICTLY EXCLUDE**:
+  - Appointment sections.
+  - Natural Person cessation sections.
 
-        except Exception as e:
-            self.logger.error(f"Error saving page images: {e}")
-            raise RuntimeError("Failed to convert PDF pages to images") from e
+###FIELD EXTRACTION RULES**:
+- **Capacity**: Check visual checkboxes - return "Y" or "N" for keys "Capacity - Director", "Capacity - Alternate Director", or "Capacity - Company Secretary".
+- **Alternate To**: Extract name if alternate director role is selected, else "N/A".
+- **Company Name in Chinese**: Extract text. If blank/empty, return "N/A".
+- **Company Name in English**: Extract text. If blank/empty, return "N/A".
+- **Company Number**: Extract alphanumeric value if present in the section. If not, return "N/A".
+- **Date of Cessation**: Extract complete date (DD/MM/YYYY) from the "Details of Cessation" section. **If this date exists, you must output the record.**
+- **Source from Continuation Sheet**:
+  - **Logic**: Check the top right for "Continuation Sheet [Letter]" and the bottom right for "Page [Number]".
+  - If the data is from the **Main Form**, return "N/A".
+  - If from a **Continuation Sheet**, return format "[Letter] ([Page Number])". (Example: "A (2)", "C (4)").
 
+###Critical Output Instruction:
+**IMPORTANT: Return the output strictly in JSON format.**
+- The root key must be `"deletionBodyCorporate"`.
+- The value must be a list of objects containing details from the Main form and ALL Continuation Sheets combined.
+- **Do not** return markdown formatting (like ```json), just the raw JSON object.
 
-# source/classify.py
+###JSON Structure Example :-
+{
+  "deletionBodyCorporate": [
+    {
+      "Capacity - Director": "Y",
+      "Capacity - Alternate Director": "N",
+      "Capacity - Company Secretary": "N",
+      "Capacity - Alternate to (name)": "N/A",
+      "Company Name in Chinese": "N/A",
+      "Company Name in English": "N/A",
+      "Company Number": "N/A",
+      "Date of Cessation": "21/07/2023",
+      "Source from Continuation Sheet": "N/A"
+    },
+    {
+      "Capacity - Director": "N",
+      "Capacity - Alternate Director": "Y",
+      "Capacity - Company Secretary": "N",
+      "Capacity - Alternate to (name)": "Chan Tai Man",
+      "Company Name in Chinese": "N/A",
+      "Company Name in English": "Global Tech Solutions",
+      "Company Number": "31441",
+      "Date of Cessation": "22/07/2023",
+      "Source from Continuation Sheet": "A (2)"
+    }
+  ]
+}
 
-def classify_pages(image_paths, business, categories, logger):
-    data = {}
-    scores = {}
-
-    logger.info(f"Classifying {len(image_paths)} pages using Vision LLM...")
-
-    # Resolve specific category config
-    from configurations.params import business_categories
-    if business in business_categories:
-        categories_config = business_categories[business]["categories"]
-    else:
-        categories_config = categories 
-
-    # Iterate over image paths
-    for i, img_path in enumerate(image_paths):
-        page_num = i + 1
-        
-        # Call Vision LLM
-        label, score = classify_image_with_llm(img_path, categories_config, business)
-        
-        scores[page_num] = score
-        data[page_num] = label
-        
-        logger.info(f"Page {page_num} ({img_path}) classified as: {label}")
-        
-        # Optional: Remove temp image after processing to save space
-        try:
-            os.remove(img_path)
-        except:
-            pass
-
-    # --- Existing logic for grouping pages (NARI, ND2A, etc.) remains below ---
-    # The logic below (lines 80-90 in original) expects 'data' dictionary 
-    # {1: 'Label', 2: 'Label'}, which we just populated.
-    
-    pages = sorted(data.keys())
-    result = []
-    
-    # ... (Copy the rest of the grouping logic from original source lines 80-90) ...
-    
-    # Start of existing grouping logic
-    while pages:
-        start = pages[0]
-        classification = data[start]
-        
-        # ... [Keep your existing grouping logic unchanged] ...
-        
-        # (Shortened for brevity - paste original logic here)
-        if classification in ['HKID', 'Passport', 'Driving_license', 'Energy_bill']:
-             result.append((start, start + 1, classification))
-             pages.remove(start)
-             continue
-             
-        # ... [Handle MOM/BR ranges logic] ...
-        
-        # Temporary fallback for closing the loop if logic not pasted
-        if start in pages: pages.remove(start) 
-
-    return result, scores
-
+##False case scenarios:-
+1) **If (AND ONLY IF) the Body Corporate section is COMPLETELY BLANK (No names, No checked boxes, No dates)**, return:
+{
+  "deletionBodyCorporate": []
+}
