@@ -1,3 +1,16 @@
+Please extract the Meeting Date from the Board of Directors resolution document.
+
+Adhere to the following strict rules:
+1. Extraction Source: Extract the date ONLY from the resolution header/body (e.g., "resolutions dated..."). Do NOT extract dates from the signature section unless the header date is completely missing.
+2. Date Standardization: Convert the extracted date into the format "DD-MMM-YYYY" (e.g., 08-APR-2024).
+3. Output Format: Return ONLY the final standardized date string. Do not include the raw text found in the document.
+4. Fallback: If no meeting date is found, look for the signing date. If neither is found, return the value 'N/A'.
+5. Labeling: Provide the output as a key-value pair: {'Meeting Date': 'DD-MMM-YYYY'}.
+
+
+
+
+
 \n###What are you :- You are an intelligent document extraction agent for Form ND2A.
 
 ###What are you extracting :-
