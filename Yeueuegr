@@ -1,0 +1,34 @@
+# ... existing code ...
+                        "Credit_Card_Application": {
+                             "Credit Card Application": 15,
+                             "Credit Card Application Form": 15,
+                             "Card Centre": 8,
+                             "Credit Card Instruction": 8,
+                             "Principal Card Applicant": 6,
+                             "Declaration and signature": 5
+                        },
+
+                        # --- ADD THESE BLOCKS ---
+                        "FATCA": {
+                            "Form W-8BEN-E": 15,
+                            "Form W-8IMY": 15,
+                            "FATCA status": 10,
+                            "Certificate of Status of Beneficial Owner": 10,
+                            "Chapter 4 Status": 8,
+                            "substantial U.S. owners": 6,
+                            "Global Intermediary Identification Number": 6,
+                            "GIIN": 4
+                        },
+                        "Listing_Proof": {
+                            "Ownership Summary": 10,
+                            "Market Capitalization": 10,
+                            "Shares Outstanding": 8,
+                            "Listed Securities": 8,
+                            "Stock Exchange": 6,
+                            "ISIN": 6,
+                            "Price History": 5,
+                            "Nasdaq": 5,
+                            "Bloomberg": 5
+                        },
+                        # ----------------------
+# ... existing code ...
