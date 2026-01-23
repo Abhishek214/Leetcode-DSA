@@ -1,0 +1,38 @@
+                        "Credit_Card_Application": {
+                             "Credit Card Application": 20,
+                             "Credit Card": 20,
+                             "Principal Card": 15,
+                             "Supplementary Card": 15,
+                             "Card Centre": 15,
+                             "Credit Limit": 10,
+                             "Finance Charge": 10,
+                             "VISA": 5,
+                             "MasterCard": 5,
+                             "UnionPay": 5
+                        },
+                        "FATCA": {
+                            "Form W-8": 20,
+                            "W-8BEN": 20,
+                            "W-8IMY": 20,
+                            "FATCA": 20,
+                            "IRS": 15,
+                            "Department of the Treasury": 15,
+                            "Chapter 3 Status": 15,
+                            "Chapter 4 Status": 15,
+                            "GIIN": 15,
+                            "Beneficial Owner": 10,
+                            "Substantial U.S. owner": 10
+                        },
+                        "Listing_Proof": {
+                            "Stock Exchange": 20,
+                            "Market Cap": 20,
+                            "Market Capitalization": 20,
+                            "ISIN": 20,
+                            "Shares Outstanding": 15,
+                            "Ownership Summary": 15,
+                            "Price History": 15,
+                            "Bloomberg": 15,
+                            "Reuters": 15,
+                            "Nasdaq": 15,
+                            "Ticker": 10
+                        },
