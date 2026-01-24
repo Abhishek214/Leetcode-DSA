@@ -1,86 +1,121 @@
-Please extract the Meeting Date from the Board of Directors resolution document.
+                        "Credit_Card_Application": {
+                             "Credit Card Application": 20,
+                             "Credit Card": 20,
+                             "Principal Card": 15,
+                             "Supplementary Card": 15,
+                             "Card Centre": 15,
+                             "Credit Limit": 10,
+                             "Finance Charge": 10,
+                             "VISA": 5,
+                             "MasterCard": 5,
+                             "UnionPay": 5
+                        },
+                        "FATCA": {
+                            "Form W-8": 20,
+                            "W-8BEN": 20,
+                            "W-8IMY": 20,
+                            "FATCA": 20,
+                            "IRS": 15,
+                            "Department of the Treasury": 15,
+                            "Chapter 3 Status": 15,
+                            "Chapter 4 Status": 15,
+                            "GIIN": 15,
+                            "Beneficial Owner": 10,
+                            "Substantial U.S. owner": 10
+                        },
+                        "Listing_Proof": {
+                            "Stock Exchange": 20,
+                            "Market Cap": 20,
+                            "Market Capitalization": 20,
+                            "ISIN": 20,
+                            "Shares Outstanding": 15,
+                            "Ownership Summary": 15,
+                            "Price History": 15,
+                            "Bloomberg": 15,
+                            "Reuters": 15,
+                            "Nasdaq": 15,
+                            "Ticker": 10
+                        },
 
-Adhere to the following strict rules:
-1. Extraction Source: Extract the date ONLY from the resolution header/body (e.g., "resolutions dated..."). Do NOT extract dates from the signature section unless the header date is completely missing.
-2. Date Standardization: Convert the extracted date into the format "DD-MMM-YYYY" (e.g., 08-APR-2024).
-3. Output Format: Return ONLY the final standardized date string. Do not include the raw text found in the document.
-4. Fallback: If no meeting date is found, look for the signing date. If neither is found, return the value 'N/A'.
-5. Labeling: Provide the output as a key-value pair: {'Meeting Date': 'DD-MMM-YYYY'}.
 
+import os
+import pandas as pd
+from sklearn.feature_extraction.text import TfidfVectorizer
+from pypdf import PdfReader
 
+# 1. SETUP: Define your document folders
+# Put your sample files in folders named after their category
+# e.g. ./docs/Credit_Card_Application/, ./docs/FATCA/, ./docs/Generic_Docs/
+data_dir = "./docs" 
 
+def get_text_from_file(filepath):
+    text = ""
+    try:
+        if filepath.endswith('.pdf'):
+            reader = PdfReader(filepath)
+            for page in reader.pages:
+                text += page.extract_text() + " "
+        elif filepath.endswith('.txt'):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                text = f.read()
+    except Exception as e:
+        print(f"Skipping {filepath}: {e}")
+    return text
 
+# 2. LOAD DATA
+documents = []
+labels = []
 
-\n###What are you :- You are an intelligent document extraction agent for Form ND2A.
+for label in os.listdir(data_dir):
+    folder_path = os.path.join(data_dir, label)
+    if os.path.isdir(folder_path):
+        print(f"Loading {label}...")
+        combined_text = ""
+        for filename in os.listdir(folder_path):
+            file_path = os.path.join(folder_path, filename)
+            combined_text += get_text_from_file(file_path)
+        
+        documents.append(combined_text)
+        labels.append(label)
 
-###What are you extracting :-
-Extract structured data about **Cessation to Act as Company Secretary/Director (Body Corporate)** from the main sections AND any attached **Continuation Sheets**.
+# 3. APPLY TF-IDF
+# ngram_range=(1, 3) captures phrases like "Market Capitalization" (2 words) 
+# instead of just "Market" and "Capitalization" separately.
+vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 3), max_features=5000)
+tfidf_matrix = vectorizer.fit_transform(documents)
+feature_names = vectorizer.get_feature_names_out()
 
-###TRIGGER RULE (CRITICAL) :-
-**You MUST create a data entry if ANY of the following are present in the Body Corporate section:**
-1. ANY checkbox is ticked (Director, Alternate, or Secretary).
-2. A Date of Cessation is written.
-3. Text is written in the "Alternate to" field.
-**DO NOT SKIP the row just because the "Company Name" is empty.** If a checkbox is ticked but the name is blank, return "N/A" for the name and extract the checkbox status.
+# 4. EXTRACT TOP KEYWORDS PER CATEGORY
+print("\n--- COPY THE BELOW INTO params.py ---")
+print("business_categories = {")
 
-###How to identify the Section :-
-Look for sections titled "Cessation to Act as Company Secretary/Director" (Section 2).
-- Identify the **Body Corporate** subsection (usually labeled "Particulars of Company Secretary/Director (Body Corporate)" or "公司秘書 / 董事的詳情 (法人團體)").
-- Check both the **Main Form** and headers labeled "Continuation Sheet".
+for i, label in enumerate(labels):
+    print(f'    "{label}": {{')
+    print(f'        "categories": {{')
+    print(f'            "{label}": {{')
+    
+    # Get row for this document type
+    row = tfidf_matrix[i].toarray().flatten()
+    
+    # Sort by score descending
+    top_indices = row.argsort()[-15:][::-1] # Get top 15 keywords
+    
+    for idx in top_indices:
+        score = row[idx]
+        word = feature_names[idx]
+        
+        # Only keep strong signals (filter low scores)
+        if score > 0.05: 
+            # Map float score (0.0-1.0) to your integer weights (5-20)
+            weight = int(score * 100)
+            # Cap weight at 20, min 5
+            weight = max(5, min(20, weight))
+            
+            # Formatting to match your existing params.py style
+            print(f'                "{word}": {weight},')
+            
+    print(f'            }}')
+    print(f'        }}')
+    print(f'    }},')
 
-###What Not to Extract:-
-- **STRICTLY EXCLUDE**:
-  - Appointment sections.
-  - Natural Person cessation sections.
-
-###FIELD EXTRACTION RULES**:
-- **Capacity**: Check visual checkboxes - return "Y" or "N" for keys "Capacity - Director", "Capacity - Alternate Director", or "Capacity - Company Secretary".
-- **Alternate To**: Extract name if alternate director role is selected, else "N/A".
-- **Company Name in Chinese**: Extract text. If blank/empty, return "N/A".
-- **Company Name in English**: Extract text. If blank/empty, return "N/A".
-- **Company Number**: Extract alphanumeric value if present in the section. If not, return "N/A".
-- **Date of Cessation**: Extract complete date (DD/MM/YYYY) from the "Details of Cessation" section. **If this date exists, you must output the record.**
-- **Source from Continuation Sheet**:
-  - **Logic**: Check the top right for "Continuation Sheet [Letter]" and the bottom right for "Page [Number]".
-  - If the data is from the **Main Form**, return "N/A".
-  - If from a **Continuation Sheet**, return format "[Letter] ([Page Number])". (Example: "A (2)", "C (4)").
-
-###Critical Output Instruction:
-**IMPORTANT: Return the output strictly in JSON format.**
-- The root key must be `"deletionBodyCorporate"`.
-- The value must be a list of objects containing details from the Main form and ALL Continuation Sheets combined.
-- **Do not** return markdown formatting (like ```json), just the raw JSON object.
-
-###JSON Structure Example :-
-{
-  "deletionBodyCorporate": [
-    {
-      "Capacity - Director": "Y",
-      "Capacity - Alternate Director": "N",
-      "Capacity - Company Secretary": "N",
-      "Capacity - Alternate to (name)": "N/A",
-      "Company Name in Chinese": "N/A",
-      "Company Name in English": "N/A",
-      "Company Number": "N/A",
-      "Date of Cessation": "21/07/2023",
-      "Source from Continuation Sheet": "N/A"
-    },
-    {
-      "Capacity - Director": "N",
-      "Capacity - Alternate Director": "Y",
-      "Capacity - Company Secretary": "N",
-      "Capacity - Alternate to (name)": "Chan Tai Man",
-      "Company Name in Chinese": "N/A",
-      "Company Name in English": "Global Tech Solutions",
-      "Company Number": "31441",
-      "Date of Cessation": "22/07/2023",
-      "Source from Continuation Sheet": "A (2)"
-    }
-  ]
-}
-
-##False case scenarios:-
-1) **If (AND ONLY IF) the Body Corporate section is COMPLETELY BLANK (No names, No checked boxes, No dates)**, return:
-{
-  "deletionBodyCorporate": []
-}
+print("}")
