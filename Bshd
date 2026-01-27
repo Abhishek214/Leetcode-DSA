@@ -1,0 +1,34 @@
+from sklearn.feature_extraction.text import TfidfVectorizer
+import pandas as pd
+
+# 1. Custom Stop Words (Noise to Ignore)
+# These are the common words you noticed that cause misclassification
+custom_stop_words = [
+    '2023', '2024', '2025', 'date', 'page', 'total', 'english', 
+    'return', 'region', 'person', 'address', 'name', 'signature',
+    'limited', 'group', 'updated', 'summary', 'business', 'sector'
+]
+
+# 2. Force N-Grams (Phrases)
+# ngram_range=(2, 3) means "Look for 2-word or 3-word phrases ONLY"
+# This automatically kills single words like "return" or "person"
+vectorizer = TfidfVectorizer(
+    stop_words=custom_stop_words, # Apply your ignore list
+    ngram_range=(2, 3),           # REQUIRE phrases (e.g., "Market Capitalization" vs "Market")
+    min_df=1,                     # Use even if unique to 1 doc
+    max_df=0.8                    # Ignore if it appears in >80% of docs (common boilerplate)
+)
+
+# Example Usage
+corpus = [
+    "Form W-8BEN-E Certificate of Status of Beneficial Owner", # FATCA text
+    "Market Capitalization Shares Outstanding Price History",   # Listing text
+    "Credit Card Application Principal Card Applicant"          # Credit Card text
+]
+
+tfidf_matrix = vectorizer.fit_transform(corpus)
+feature_names = vectorizer.get_feature_names_out()
+
+# This will output phrases like 'beneficial owner', 'shares outstanding'
+# instead of 'owner', 'shares', 'status'.
+print(feature_names) 
