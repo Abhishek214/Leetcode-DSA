@@ -1,0 +1,87 @@
+import os
+from keybert import KeyBERT
+from pypdf import PdfReader
+
+# 1. Initialize the Semantic Model
+kw_model = KeyBERT()
+
+def get_text_from_file(filepath):
+    """Extracts text based on file extension."""
+    text = ""
+    try:
+        if filepath.lower().endswith('.pdf'):
+            reader = PdfReader(filepath)
+            for page in reader.pages:
+                content = page.extract_text()
+                if content:
+                    text += content + " "
+        elif filepath.lower().endswith('.txt'):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                text = f.read()
+    except Exception as e:
+        print(f"Error reading {filepath}: {e}")
+    return text
+
+def process_labeled_folders(root_dir):
+    """
+    Iterates through folders in root_dir. 
+    Folder name = Label.
+    Files inside = Data for that label.
+    """
+    results = {}
+
+    # Iterate through each folder in the root directory
+    for label in os.listdir(root_dir):
+        folder_path = os.path.join(root_dir, label)
+        
+        if os.path.isdir(folder_path):
+            print(f"Processing category: {label}...")
+            combined_text = ""
+            
+            # Aggregate text from all files in this specific folder
+            for filename in os.listdir(folder_path):
+                file_path = os.path.join(folder_path, filename)
+                combined_text += get_text_from_file(file_path)
+            
+            if not combined_text.strip():
+                print(f"No text found for {label}. Skipping.")
+                continue
+
+            # 2. Extract Semantic Keywords for the entire category
+            # use_mmr=True and diversity=0.7 ensure exclusive, non-redundant phrases
+            keywords = kw_model.extract_keywords(
+                combined_text, 
+                keyphrase_ngram_range=(2, 3), # Focus on unique phrases, not single words
+                stop_words='english', 
+                use_mmr=True, 
+                diversity=0.8, 
+                top_n=12
+            )
+            results[label] = keywords
+
+    return results
+
+# --- EXECUTION ---
+# Path to your 'docs' folder containing subfolders like 'FATCA', 'Listing_Proof', etc.
+root_directory = "./docs" 
+final_keywords = process_labeled_folders(root_directory)
+
+print("\n" + "="*30)
+print("GENERATED PARAMS.PY CONFIG")
+print("="*30)
+print("business_categories = {")
+print("    \"wpb-irr\": {")
+print("        \"categories\": {")
+
+for label, kws in final_keywords.items():
+    print(f"            \"{label}\": {{")
+    for word, score in kws:
+        # Scale BERT score (0-1) to your weight system (5-20)
+        weight = int(score * 35) 
+        weight = max(5, min(20, weight))
+        print(f"                \"{word}\": {weight},")
+    print("            },")
+
+print("        }")
+print("    }")
+print("}")
