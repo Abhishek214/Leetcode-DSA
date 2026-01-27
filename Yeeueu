@@ -1,0 +1,27 @@
+Model Files:
+​pytorch_model.bin (The actual model weights)
+​config.json (Model architecture configuration)
+​modules.json (Crucial for sentence-transformers to define the sequence of layers)
+​config_sentence_transformers.json
+​sentence_bert_config.json
+​Tokenizer Files:
+​tokenizer_config.json
+​tokenizer.json
+​vocab.txt
+​special_tokens_map.json
+​Pooling Configuration:
+​Create a subfolder named 1_Pooling and download the config.json file located inside the 1_Pooling folder on Hugging Face.
+​2. Local Folder Structure
+​Organize the downloaded files on your local disk (e.g., in a folder named local_model) like this:
+
+/your_project_directory/
+└── local_model/
+    ├── pytorch_model.bin
+    ├── config.json
+    ├── modules.json
+    ├── tokenizer_config.json
+    ├── tokenizer.json
+    ├── vocab.txt
+    ├── ... (other root files)
+    └── 1_Pooling/
+        └── config.json
