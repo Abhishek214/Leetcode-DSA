@@ -1,0 +1,112 @@
+import os
+import re
+from collections import Counter
+from keybert import KeyBERT
+from sentence_transformers import SentenceTransformer, models
+from pypdf import PdfReader
+
+# --- 1. SETUP MODEL (OFFLINE FIX) ---
+# We use the manual load method that worked previously to avoid Repo ID errors
+model_path = '/opt/disk1/app/Abhishek/alminilm_v6' # Your local path
+
+try:
+    # Load raw transformer + pooling to bypass config validation issues
+    word_embedding_model = models.Transformer(model_path, max_seq_length=256)
+    pooling_model = models.Pooling(word_embedding_model.get_word_embedding_dimension())
+    embedding_model = SentenceTransformer(modules=[word_embedding_model, pooling_model])
+    
+    # Initialize KeyBERT with the pre-loaded object
+    kw_model = KeyBERT(model=embedding_model)
+    print("✅ Local Model Loaded Successfully")
+except Exception as e:
+    print(f"❌ Model Load Failed: {e}")
+    exit()
+
+# --- 2. TEXT CLEANING FUNCTION ---
+def clean_text(text):
+    """
+    Fixes common OCR issues visible in your screenshot 
+    (e.g., 'financi al' -> 'financial', remove weird chars)
+    """
+    # Replace newlines and tabs with space
+    text = text.replace('\n', ' ').replace('\r', ' ')
+    
+    # Fix broken words with spaces (basic heuristic)
+    text = text.replace('financi al', 'financial') 
+    text = text.replace('substanti al', 'substantial')
+    
+    # Remove non-ascii garbage characters but keep basic punctuation
+    text = re.sub(r'[^\x00-\x7F]+', ' ', text)
+    
+    # Remove multiple spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    return text
+
+def get_text_from_pdf(filepath):
+    text = ""
+    try:
+        reader = PdfReader(filepath)
+        for page in reader.pages:
+            text += page.extract_text() + " "
+    except Exception as e:
+        print(f"Skipping {filepath}: {e}")
+    return clean_text(text)
+
+# --- 3. THE "CONSISTENCY" LOGIC ---
+def find_common_keywords(folder_path, min_occurrence_percent=0.5):
+    """
+    Finds keywords that appear in at least X% of the documents in the folder.
+    """
+    all_keywords = []
+    file_count = 0
+    
+    # 1. Iterate through every file
+    for filename in os.listdir(folder_path):
+        if filename.lower().endswith('.pdf'):
+            file_path = os.path.join(folder_path, filename)
+            print(f"Processing: {filename}...")
+            
+            text = get_text_from_pdf(file_path)
+            if len(text) < 50: continue
+
+            # Extract top 15 keywords for THIS specific file
+            # ngram_range=(2, 3) forces phrases like "Beneficial Owner", not just "Owner"
+            keywords = kw_model.extract_keywords(
+                text, 
+                keyphrase_ngram_range=(2, 3), 
+                stop_words='english', 
+                use_mmr=True, 
+                diversity=0.3, # Low diversity here helps find the "core" topic
+                top_n=15
+            )
+            
+            # Add just the words to our master list
+            all_keywords.extend([k[0] for k in keywords])
+            file_count += 1
+
+    # 2. Count Frequencies
+    if file_count == 0: return {}
+    
+    keyword_counts = Counter(all_keywords)
+    
+    # 3. Filter: Must appear in at least X% of docs
+    threshold = file_count * min_occurrence_percent
+    common_keywords = {k: v for k, v in keyword_counts.items() if v >= threshold}
+    
+    return common_keywords
+
+# --- EXECUTE ---
+target_folder = "./docs/FATCA"  # Point this to your folder
+common_kws = find_common_keywords(target_folder, min_occurrence_percent=0.4) # 40% threshold
+
+print("\n" + "="*40)
+print("🏆 FINAL ROBUST KEYWORDS (Appearing in multiple docs)")
+print("="*40)
+
+# Sort by most frequent
+sorted_kws = sorted(common_kws.items(), key=lambda item: item[1], reverse=True)
+
+for word, count in sorted_kws:
+    # Scale weight: 20 for very common, 10 for moderately common
+    weight = 10 + min(10, count * 2) 
+    print(f'"{word}": {weight},  # Found in {count} docs')
