@@ -1,0 +1,43 @@
+from keybert import KeyBERT
+from pypdf import PdfReader
+import os
+
+# 1. Initialize the Semantic Model
+kw_model = KeyBERT()
+
+def get_keywords(filepath):
+    text = ""
+    # Extract text from PDF
+    if filepath.endswith('.pdf'):
+        reader = PdfReader(filepath)
+        for page in reader.pages:
+            text += page.extract_text() + " "
+    
+    # 2. Extract Semantic Keywords
+    # keyphrase_ngram_range=(1, 3): Look for phrases up to 3 words
+    # use_mmr=True: This removes redundant/common terms (Crucial for your issue)
+    # diversity=0.7: High diversity forces it to pick unique angles, not just repetitions
+    keywords = kw_model.extract_keywords(text, 
+                                         keyphrase_ngram_range=(1, 3), 
+                                         stop_words='english', 
+                                         use_mmr=True, 
+                                         diversity=0.7,
+                                         top_n=10)
+    return keywords
+
+# Example Usage
+files = ["./docs/FATCA 4.pdf", "./docs/Listing Proof 5.pdf"]
+
+print("{")
+for f in files:
+    try:
+        kws = get_keywords(f)
+        print(f"  # Keywords for {os.path.basename(f)}")
+        for word, score in kws:
+            # Scale score (usually 0.0-0.8) to your 1-20 system
+            weight = int(score * 40) 
+            weight = max(5, min(20, weight))
+            print(f"  '{word}': {weight},")
+    except Exception as e:
+        print(f"Error processing {f}: {e}")
+print("}")
