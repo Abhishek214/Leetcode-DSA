@@ -1,21 +1,21 @@
-from PIL import Image
-
-def convert_multipage_tif_to_pdf(tif_path, pdf_path):
-    with Image.open(tif_path) as img:
-        pages = []
-        
-        for i in range(img.n_frames):
-            img.seek(i)
-            # Create a copy of the frame and convert to RGB
-            page = img.convert('RGB')
-            pages.append(page)
-            
-        # Save the first page and append the rest
-        if pages:
-            pages[0].save(
-                pdf_path, 
-                save_all=True, 
-                append_images=pages[1:]
-            )
-
-convert_multipage_tif_to_pdf("document.tif", "document.pdf")
+​Copy and paste this prompt into your API call:
+​System Role:
+You are a highly specialized Document Classification Engineer. Your goal is to identify unique, stable, and exclusive keywords for document classification rules.
+​Task:
+Analyze the provided text samples from multiple documents of the document type: [INSERT DOCUMENT TYPE, e.g., FATCA]. Identify the top 15 keywords or phrases that meet the following criteria:
+​Consistency: They must appear in almost all provided samples.
+​Uniqueness: They should be specific to this document type and unlikely to appear in generic corporate emails or other business documents.
+​OCR Resilience: Avoid terms that are easily misread (e.g., words with many vertical bars like 'Illl' or symbols).
+​N-Grams: Prioritize 2-3 word phrases (Bigrams/Trigrams) over single words to avoid ambiguity (e.g., use "Shares Outstanding" instead of "Shares").
+​Input Data:
+​[PASTE TEXT FROM DOCUMENT 1]
+​[PASTE TEXT FROM DOCUMENT 2]
+​[PASTE TEXT FROM DOCUMENT 3]
+...
+​Output Format:
+Return a JSON object only, where keys are the keywords (in lowercase) and values are a "Confidence Score" from 1 to 20 based on how central that term is to the document's identity.
+​Example:
+{
+"keyword phrase one": 20,
+"keyword phrase two": 15
+}
