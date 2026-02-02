@@ -1,121 +1,21 @@
-                        "Credit_Card_Application": {
-                             "Credit Card Application": 20,
-                             "Credit Card": 20,
-                             "Principal Card": 15,
-                             "Supplementary Card": 15,
-                             "Card Centre": 15,
-                             "Credit Limit": 10,
-                             "Finance Charge": 10,
-                             "VISA": 5,
-                             "MasterCard": 5,
-                             "UnionPay": 5
-                        },
-                        "FATCA": {
-                            "Form W-8": 20,
-                            "W-8BEN": 20,
-                            "W-8IMY": 20,
-                            "FATCA": 20,
-                            "IRS": 15,
-                            "Department of the Treasury": 15,
-                            "Chapter 3 Status": 15,
-                            "Chapter 4 Status": 15,
-                            "GIIN": 15,
-                            "Beneficial Owner": 10,
-                            "Substantial U.S. owner": 10
-                        },
-                        "Listing_Proof": {
-                            "Stock Exchange": 20,
-                            "Market Cap": 20,
-                            "Market Capitalization": 20,
-                            "ISIN": 20,
-                            "Shares Outstanding": 15,
-                            "Ownership Summary": 15,
-                            "Price History": 15,
-                            "Bloomberg": 15,
-                            "Reuters": 15,
-                            "Nasdaq": 15,
-                            "Ticker": 10
-                        },
+from PIL import Image
 
-
-import os
-import pandas as pd
-from sklearn.feature_extraction.text import TfidfVectorizer
-from pypdf import PdfReader
-
-# 1. SETUP: Define your document folders
-# Put your sample files in folders named after their category
-# e.g. ./docs/Credit_Card_Application/, ./docs/FATCA/, ./docs/Generic_Docs/
-data_dir = "./docs" 
-
-def get_text_from_file(filepath):
-    text = ""
-    try:
-        if filepath.endswith('.pdf'):
-            reader = PdfReader(filepath)
-            for page in reader.pages:
-                text += page.extract_text() + " "
-        elif filepath.endswith('.txt'):
-            with open(filepath, 'r', encoding='utf-8') as f:
-                text = f.read()
-    except Exception as e:
-        print(f"Skipping {filepath}: {e}")
-    return text
-
-# 2. LOAD DATA
-documents = []
-labels = []
-
-for label in os.listdir(data_dir):
-    folder_path = os.path.join(data_dir, label)
-    if os.path.isdir(folder_path):
-        print(f"Loading {label}...")
-        combined_text = ""
-        for filename in os.listdir(folder_path):
-            file_path = os.path.join(folder_path, filename)
-            combined_text += get_text_from_file(file_path)
+def convert_multipage_tif_to_pdf(tif_path, pdf_path):
+    with Image.open(tif_path) as img:
+        pages = []
         
-        documents.append(combined_text)
-        labels.append(label)
-
-# 3. APPLY TF-IDF
-# ngram_range=(1, 3) captures phrases like "Market Capitalization" (2 words) 
-# instead of just "Market" and "Capitalization" separately.
-vectorizer = TfidfVectorizer(stop_words='english', ngram_range=(1, 3), max_features=5000)
-tfidf_matrix = vectorizer.fit_transform(documents)
-feature_names = vectorizer.get_feature_names_out()
-
-# 4. EXTRACT TOP KEYWORDS PER CATEGORY
-print("\n--- COPY THE BELOW INTO params.py ---")
-print("business_categories = {")
-
-for i, label in enumerate(labels):
-    print(f'    "{label}": {{')
-    print(f'        "categories": {{')
-    print(f'            "{label}": {{')
-    
-    # Get row for this document type
-    row = tfidf_matrix[i].toarray().flatten()
-    
-    # Sort by score descending
-    top_indices = row.argsort()[-15:][::-1] # Get top 15 keywords
-    
-    for idx in top_indices:
-        score = row[idx]
-        word = feature_names[idx]
-        
-        # Only keep strong signals (filter low scores)
-        if score > 0.05: 
-            # Map float score (0.0-1.0) to your integer weights (5-20)
-            weight = int(score * 100)
-            # Cap weight at 20, min 5
-            weight = max(5, min(20, weight))
+        for i in range(img.n_frames):
+            img.seek(i)
+            # Create a copy of the frame and convert to RGB
+            page = img.convert('RGB')
+            pages.append(page)
             
-            # Formatting to match your existing params.py style
-            print(f'                "{word}": {weight},')
-            
-    print(f'            }}')
-    print(f'        }}')
-    print(f'    }},')
+        # Save the first page and append the rest
+        if pages:
+            pages[0].save(
+                pdf_path, 
+                save_all=True, 
+                append_images=pages[1:]
+            )
 
-print("}")
+convert_multipage_tif_to_pdf("document.tif", "document.pdf")
