@@ -1,21 +1,68 @@
-​Copy and paste this prompt into your API call:
-​System Role:
-You are a highly specialized Document Classification Engineer. Your goal is to identify unique, stable, and exclusive keywords for document classification rules.
-​Task:
-Analyze the provided text samples from multiple documents of the document type: [INSERT DOCUMENT TYPE, e.g., FATCA]. Identify the top 15 keywords or phrases that meet the following criteria:
-​Consistency: They must appear in almost all provided samples.
-​Uniqueness: They should be specific to this document type and unlikely to appear in generic corporate emails or other business documents.
-​OCR Resilience: Avoid terms that are easily misread (e.g., words with many vertical bars like 'Illl' or symbols).
-​N-Grams: Prioritize 2-3 word phrases (Bigrams/Trigrams) over single words to avoid ambiguity (e.g., use "Shares Outstanding" instead of "Shares").
-​Input Data:
-​[PASTE TEXT FROM DOCUMENT 1]
-​[PASTE TEXT FROM DOCUMENT 2]
-​[PASTE TEXT FROM DOCUMENT 3]
-...
-​Output Format:
-Return a JSON object only, where keys are the keywords (in lowercase) and values are a "Confidence Score" from 1 to 20 based on how central that term is to the document's identity.
-​Example:
-{
-"keyword phrase one": 20,
-"keyword phrase two": 15
+import pandas as pd
+import ast
+from thefuzz import fuzz
+
+# 1. Helper function to find the actual substring that matched
+def get_matched_phrase(query, text):
+    query_len = len(query)
+    best_score = -1
+    best_match = ""
+    
+    # partial_ratio looks for substrings of the same length as the query
+    # We iterate through the text to find which substring gives the highest ratio
+    for i in range(len(text) - query_len + 1):
+        substring = text[i : i + query_len]
+        score = fuzz.ratio(query, substring)
+        if score > best_score:
+            best_score = score
+            best_match = substring
+            
+    return best_match
+
+# Your dictionary from the image
+a = {
+    "retireincome annuity plan application": 20,
+    "proposed insured": 20,
+    "details of the policyholder": 20,
+    "details of insurance coverage": 20,
+    # ... add other keys
 }
+
+n = {}  # To store counts
+matched_details = [] # To store the found phrases for inspection
+
+df = pd.read_csv("/opt/disk1/app/Abhishek/dcrest-classification-service/Insurance_Application.csv")
+
+threshold = 85 # Adjust this (80-90 is usually good for partial matches)
+
+for idx, file_text in enumerate(df['file_text']):
+    try:
+        # Convert string to dict and join values
+        data_dict = ast.literal_eval(file_text)
+        text = " ".join(list(data_dict.values())[:8]).lower()
+        
+        for key in a.keys():
+            search_key = key.lower()
+            score = fuzz.partial_ratio(search_key, text)
+            
+            if score >= threshold:
+                # Update count
+                n[key] = n.get(key, 0) + 1
+                
+                # Extract the actual phrase from the text
+                actual_phrase = get_matched_phrase(search_key, text)
+                
+                matched_details.append({
+                    'row_index': idx,
+                    'searched_key': key,
+                    'found_phrase': actual_phrase,
+                    'score': score
+                })
+    except Exception as e:
+        print(f"Error at index {idx}: {e}")
+
+# Display results
+print(f"Counts: {n}")
+# Convert matches to a dataframe to view what was actually found
+matches_df = pd.DataFrame(matched_details)
+print(matches_df.head())
