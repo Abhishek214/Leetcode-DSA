@@ -2,67 +2,90 @@ import pandas as pd
 import ast
 from thefuzz import fuzz
 
-# 1. Helper function to find the actual substring that matched
-def get_matched_phrase(query, text):
-    query_len = len(query)
-    best_score = -1
-    best_match = ""
-    
-    # partial_ratio looks for substrings of the same length as the query
-    # We iterate through the text to find which substring gives the highest ratio
-    for i in range(len(text) - query_len + 1):
-        substring = text[i : i + query_len]
-        score = fuzz.ratio(query, substring)
-        if score > best_score:
-            best_score = score
-            best_match = substring
-            
-    return best_match
-
-# Your dictionary from the image
+# 1. Configuration & Data
+file_path = "/opt/disk1/app/Abhishek/dcrest-classification-service/Insurance_Application.csv"
 a = {
     "retireincome annuity plan application": 20,
     "proposed insured": 20,
     "details of the policyholder": 20,
     "details of insurance coverage": 20,
-    # ... add other keys
+    "initial monthly guranteed annuity payment": 20,
+    "premium payment": 20,
+    "occupation and industry": 20,
+    "waiver of premium": 20,
+    "enhanced protection option": 20,
+    "beneficiary information": 20,
+    "initial premium": 20,
+    "insurance plan details": 20,
+    "personal insurance": 20,
+    "health declaration": 20
 }
 
-n = {}  # To store counts
-matched_details = [] # To store the found phrases for inspection
+# 2. Helper to find the specific substring that matched
+def get_best_match(query, text):
+    """Finds the substring in 'text' that most closely matches 'query'"""
+    query = query.lower()
+    text = text.lower()
+    q_len = len(query)
+    best_score = -1
+    best_sub = ""
+    
+    # Check sliding windows of the query's length
+    for i in range(len(text) - q_len + 1):
+        sub = text[i : i + q_len]
+        score = fuzz.ratio(query, sub)
+        if score > best_score:
+            best_score = score
+            best_sub = sub
+    return best_sub
 
-df = pd.read_csv("/opt/disk1/app/Abhishek/dcrest-classification-service/Insurance_Application.csv")
+# 3. Processing
+df = pd.read_csv(file_path)
+total_rows = len(df)
+counts = {key: 0 for key in a.keys()}
+match_examples = {key: [] for key in a.keys()} # To store actual matched phrases
 
-threshold = 85 # Adjust this (80-90 is usually good for partial matches)
+threshold = 85 # Similarity threshold (0-100)
 
 for idx, file_text in enumerate(df['file_text']):
     try:
-        # Convert string to dict and join values
+        # Extract text from the dictionary column
         data_dict = ast.literal_eval(file_text)
-        text = " ".join(list(data_dict.values())[:8]).lower()
+        # Join first 8 values as per your original logic
+        text_to_search = " ".join(list(data_dict.values())[:8]).lower()
         
         for key in a.keys():
-            search_key = key.lower()
-            score = fuzz.partial_ratio(search_key, text)
-            
-            if score >= threshold:
-                # Update count
-                n[key] = n.get(key, 0) + 1
+            # Check for partial match
+            if fuzz.partial_ratio(key.lower(), text_to_search) >= threshold:
+                counts[key] += 1
                 
-                # Extract the actual phrase from the text
-                actual_phrase = get_matched_phrase(search_key, text)
+                # Identify the specific phrase in the text that caused the match
+                found_phrase = get_best_match(key, text_to_search)
+                match_examples[key].append(found_phrase)
                 
-                matched_details.append({
-                    'row_index': idx,
-                    'searched_key': key,
-                    'found_phrase': actual_phrase,
-                    'score': score
-                })
     except Exception as e:
-        print(f"Error at index {idx}: {e}")
+        continue
 
-# Display results
-print(f"Counts: {n}")
-# Convert matches to a dataframe to view what was actually found
-matches_df = pd.DataFrame(matched_details)
-print(matches_df.head())
+# 4. Final Scoring and Results
+results = []
+for key, count in counts.items():
+    # Calculate score out of 20
+    # Score = (Count / Total Rows) * 20
+    score_out_of_20 = (count / total_rows) * 20 if total_rows > 0 else 0
+    
+    # Get a unique list of actual phrases found in the text for this key
+    unique_matches = list(set(match_examples[key]))[:3] # Show up to 3 examples
+    
+    results.append({
+        "Phrase Key": key,
+        "Total Count": count,
+        "Score (out of 20)": round(score_out_of_20, 4),
+        "Sample Matched Phrases": unique_matches
+    })
+
+# Create a summary DataFrame
+summary_df = pd.DataFrame(results)
+print(summary_df)
+
+# Optionally save to CSV
+# summary_df.to_csv("match_scores.csv", index=False)
