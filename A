@@ -1,91 +1,54 @@
-import pandas as pd
-import ast
-from thefuzz import fuzz
+def classify_document_with_scoring(document, business, categories):
+    document_lower = document.lower()
+    # keyword_scores will store: { "CategoryName": { "keyword1": count, "keyword2": count } }
+    keyword_details = {category: {} for category in categories}
+    total_category_scores = {category: 0 for category in categories}
 
-# 1. Configuration & Data
-file_path = "/opt/disk1/app/Abhishek/dcrest-classification-service/Insurance_Application.csv"
-a = {
-    "retireincome annuity plan application": 20,
-    "proposed insured": 20,
-    "details of the policyholder": 20,
-    "details of insurance coverage": 20,
-    "initial monthly guranteed annuity payment": 20,
-    "premium payment": 20,
-    "occupation and industry": 20,
-    "waiver of premium": 20,
-    "enhanced protection option": 20,
-    "beneficiary information": 20,
-    "initial premium": 20,
-    "insurance plan details": 20,
-    "personal insurance": 20,
-    "health declaration": 20
-}
+    for category, keywords in categories.items():
+        for keyword, weight in keywords.items():
+            # Standardizing search based on your existing logic
+            if category in ['HKID', 'Email', 'National_identity_card', 'Certificate Of Incumbency', 'Certificate Of Incorporation', 'AOA']:
+                if category == "HKID":
+                    clean_doc = document.replace(' ', '')
+                    pattern = fr"{keyword.replace('-', r'[\-:\s]')}"
+                    matches = re.findall(pattern, clean_doc, re.IGNORECASE)
+                else:
+                    matches = re.findall(fr"\b{keyword}\b", document_lower, re.IGNORECASE)
+            else:
+                matches = re.findall(fr"\b{keyword}\b", document_lower, re.IGNORECASE)
+            
+            count = len(matches)
+            if count > 0:
+                keyword_details[category][keyword] = count * weight
+                total_category_scores[category] += count * weight
 
-# 2. Helper to find the specific substring that matched
-def get_best_match(query, text):
-    """Finds the substring in 'text' that most closely matches 'query'"""
-    query = query.lower()
-    text = text.lower()
-    q_len = len(query)
-    best_score = -1
-    best_sub = ""
-    
-    # Check sliding windows of the query's length
-    for i in range(len(text) - q_len + 1):
-        sub = text[i : i + q_len]
-        score = fuzz.ratio(query, sub)
-        if score > best_score:
-            best_score = score
-            best_sub = sub
-    return best_sub
+    if not any(total_category_scores.values()):
+        return 'UNKNOWN_DOCTYPE', 0, {}
 
-# 3. Processing
-df = pd.read_csv(file_path)
-total_rows = len(df)
-counts = {key: 0 for key in a.keys()}
-match_examples = {key: [] for key in a.keys()} # To store actual matched phrases
+    max_score = max(total_category_scores.values())
+    max_score_category = max(total_category_scores, key=total_category_scores.get)
 
-threshold = 85 # Similarity threshold (0-100)
+    # Return the winning category, its total score, and the keyword breakdown
+    return max_score_category, max_score, keyword_details
 
-for idx, file_text in enumerate(df['file_text']):
-    try:
-        # Extract text from the dictionary column
-        data_dict = ast.literal_eval(file_text)
-        # Join first 8 values as per your original logic
-        text_to_search = " ".join(list(data_dict.values())[:8]).lower()
+def classify_pages(page_text_dict, business, categories, logger):
+    data = {}
+    scores = {}
+    page_keyword_breakdown = {} # New dictionary to hold granular scores
+
+    for i, t in enumerate(page_text_dict.keys()):
+        text = page_text_dict[t]
+        cleaned_text = re.sub(r'[\s\W\d]', '', text)
         
-        for key in a.keys():
-            # Check for partial match
-            if fuzz.partial_ratio(key.lower(), text_to_search) >= threshold:
-                counts[key] += 1
-                
-                # Identify the specific phrase in the text that caused the match
-                found_phrase = get_best_match(key, text_to_search)
-                match_examples[key].append(found_phrase)
-                
-    except Exception as e:
-        continue
+        # Capture the new third return value (keyword_details)
+        label, score, details = classify_document_with_scoring(cleaned_text, business, categories)
+        
+        page_no = i + 1
+        scores[page_no] = score
+        data[page_no] = label
+        page_keyword_breakdown[page_no] = details # Store granular data
 
-# 4. Final Scoring and Results
-results = []
-for key, count in counts.items():
-    # Calculate score out of 20
-    # Score = (Count / Total Rows) * 20
-    score_out_of_20 = (count / total_rows) * 20 if total_rows > 0 else 0
-    
-    # Get a unique list of actual phrases found in the text for this key
-    unique_matches = list(set(match_examples[key]))[:3] # Show up to 3 examples
-    
-    results.append({
-        "Phrase Key": key,
-        "Total Count": count,
-        "Score (out of 20)": round(score_out_of_20, 4),
-        "Sample Matched Phrases": unique_matches
-    })
+    # ... (Keep existing range splitting logic) ...
 
-# Create a summary DataFrame
-summary_df = pd.DataFrame(results)
-print(summary_df)
+    return result, scores, page_keyword_breakdown
 
-# Optionally save to CSV
-# summary_df.to_csv("match_scores.csv", index=False)
