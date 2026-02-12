@@ -1,80 +1,67 @@
-def answer_zero():
-    # The number of features is the length of the feature_names array
-    return len(cancer.feature_names)
-def answer_one():
-    # Combine the data (features) and the target (labels)
-    data = np.c_[cancer.data, cancer.target]
-    columns = np.append(cancer.feature_names, ["target"])
-    
-    # Create the DataFrame
-    df = pd.DataFrame(data, columns=columns)
-    return df
-def answer_two():
-    cancerdf = answer_one()
-    
-    # Count the occurrences of each target (0 is malignant, 1 is benign in this dataset)
-    malignant_count = len(cancerdf[cancerdf['target'] == 0])
-    benign_count = len(cancerdf[cancerdf['target'] == 1])
-    
-    # Create the series with the specific index required
-    target = pd.Series([malignant_count, benign_count], index=['malignant', 'benign'])
-    return target
-from sklearn.model_selection import train_test_split
-def answer_three():
-    cancerdf = answer_one()
-    
-    # X includes all columns except the last one ('target')
-    X = cancerdf.iloc[:, :-1]
-    # y is just the 'target' column
-    y = cancerdf['target']
-    
-    return X, y
 
-def answer_four():
-    X, y = answer_three()
-    
-    # Split the data with the specified random_state
-    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
-    
-    return X_train, X_test, y_train, y_test
+from sklearn.metrics import precision_recall_curve
+import numpy as np
+
+# Use decision_function or predict_proba depending on the model
+if hasattr(m, "decision_function"):
+    y_scores = m.decision_function(X_test)
+else:
+    y_scores = m.predict_proba(X_test)[:, 1]
+
+precision, recall, thresholds = precision_recall_curve(y_test, y_scores)
+
+# Find the index where recall is closest to 0.8
+idx = (np.abs(recall - 0.8)).argmin()
+print(f"Precision at recall ~0.8: {precision[idx]:.3f}")
 
 
-from sklearn.neighbors import KNeighborsClassifier
 
-def answer_five():
-    X_train, X_test, y_train, y_test = answer_four()
-    
-    # Initialize and fit the classifier with n_neighbors=1
-    knn = KNeighborsClassifier(n_neighbors=1)
-    knn.fit(X_train, y_train)
-    
-    return knn
-def answer_six():
-    cancerdf = answer_one()
-    
-    # Calculate the mean of each feature (excluding the target column)
-    means = cancerdf.mean()[:-1].values.reshape(1, -1)
-    
-    # Get the fitted model
-    knn = answer_five()
-    
-    # Predict
-    return knn.predict(means)
+from sklearn.metrics import precision_score
+
+y_pred = m.predict(X_test)
+macro_prec = precision_score(y_test, y_pred, average='macro')
+print(f"Macro Precision: {macro_prec:.3f}")
 
 
-def answer_seven():
-    X_train, X_test, y_train, y_test = answer_four()
-    knn = answer_five()
-    
-    # Predict on the test set
-    return knn.predict(X_test)
 
 
-def answer_eight():
-    X_train, X_test, y_train, y_test = answer_four()
-    knn = answer_five()
-    
-    # Calculate score (accuracy)
-    return knn.score(X_test, y_test)
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import precision_score, recall_score
+
+param_grid = {'C': [0.01, 0.1, 1, 10], 'gamma': [0.01, 0.1, 1, 10]}
+
+# Optimize for Recall
+grid_search = GridSearchCV(m, param_grid, scoring='recall')
+grid_search.fit(X_train, y_train)
+
+best_m = grid_search.best_estimator_
+y_pred = best_m.predict(X_test)
+
+rec = recall_score(y_test, y_pred)
+prec = precision_score(y_test, y_pred)
+
+print(f"Recall: {rec:.3f}, Precision: {prec:.3f}")
+print(f"Result (Recall - Precision): {rec - prec:.3f}")
+
+
+
+
+from sklearn.model_selection import GridSearchCV
+from sklearn.metrics import precision_score, recall_score
+
+param_grid = {'C': [0.01, 0.1, 1, 10], 'gamma': [0.01, 0.1, 1, 10]}
+
+# Optimize for Precision
+grid_search = GridSearchCV(m, param_grid, scoring='precision')
+grid_search.fit(X_train, y_train)
+
+best_m = grid_search.best_estimator_
+y_pred = best_m.predict(X_test)
+
+prec = precision_score(y_test, y_pred)
+rec = recall_score(y_test, y_pred)
+
+print(f"Precision: {prec:.3f}, Recall: {rec:.3f}")
+print(f"Result (Precision - Recall): {prec - rec:.3f}")
 
 
