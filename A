@@ -1,67 +1,25 @@
-
 from sklearn.metrics import precision_recall_curve
 import numpy as np
 
-# Use decision_function or predict_proba depending on the model
-if hasattr(m, "decision_function"):
-    y_scores = m.decision_function(X_test)
-else:
-    y_scores = m.predict_proba(X_test)[:, 1]
+# Use decision_function to get scores
+y_scores = m.decision_function(X_test)
 
+# Calculate the curve
 precision, recall, thresholds = precision_recall_curve(y_test, y_scores)
 
-# Find the index where recall is closest to 0.8
-idx = (np.abs(recall - 0.8)).argmin()
-print(f"Precision at recall ~0.8: {precision[idx]:.3f}")
+# Find the precision value where recall is closest to 0.8
+closest_zero = np.argmin(np.abs(recall - 0.8))
+closest_zero_p = precision[closest_zero]
 
+print(closest_zero_p)
 
 
 from sklearn.metrics import precision_score
 
+# Get predictions
 y_pred = m.predict(X_test)
+
+# Calculate macro precision
 macro_prec = precision_score(y_test, y_pred, average='macro')
-print(f"Macro Precision: {macro_prec:.3f}")
 
-
-
-
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import precision_score, recall_score
-
-param_grid = {'C': [0.01, 0.1, 1, 10], 'gamma': [0.01, 0.1, 1, 10]}
-
-# Optimize for Recall
-grid_search = GridSearchCV(m, param_grid, scoring='recall')
-grid_search.fit(X_train, y_train)
-
-best_m = grid_search.best_estimator_
-y_pred = best_m.predict(X_test)
-
-rec = recall_score(y_test, y_pred)
-prec = precision_score(y_test, y_pred)
-
-print(f"Recall: {rec:.3f}, Precision: {prec:.3f}")
-print(f"Result (Recall - Precision): {rec - prec:.3f}")
-
-
-
-
-from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import precision_score, recall_score
-
-param_grid = {'C': [0.01, 0.1, 1, 10], 'gamma': [0.01, 0.1, 1, 10]}
-
-# Optimize for Precision
-grid_search = GridSearchCV(m, param_grid, scoring='precision')
-grid_search.fit(X_train, y_train)
-
-best_m = grid_search.best_estimator_
-y_pred = best_m.predict(X_test)
-
-prec = precision_score(y_test, y_pred)
-rec = recall_score(y_test, y_pred)
-
-print(f"Precision: {prec:.3f}, Recall: {rec:.3f}")
-print(f"Result (Precision - Recall): {prec - rec:.3f}")
-
-
+print(macro_prec)
