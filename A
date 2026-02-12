@@ -1,107 +1,43 @@
-def answer_one():
-    df = pd.read_csv('assets/fraud_data.csv')
-    # The target is the last column (Class). 
-    # The mean of a binary column (0s and 1s) gives the percentage of 1s.
-    return df.iloc[:, -1].mean()
-
-def answer_two():
-    from sklearn.dummy import DummyClassifier
-    from sklearn.metrics import recall_score, accuracy_score
+def engagement_model():
+    import pandas as pd
+    import numpy as np
+    from sklearn.ensemble import RandomForestClassifier
+    from sklearn.model_selection import train_test_split
+    from sklearn.metrics import roc_auc_score
     
-    # Train the dummy classifier to always predict the majority class
-    dummy_clf = DummyClassifier(strategy='most_frequent').fit(X_train, y_train)
-    y_pred = dummy_clf.predict(X_test)
+    # Load the datasets
+    train_data = pd.read_csv('assets/train.csv')
+    test_data = pd.read_csv('assets/test.csv')
     
-    accuracy = accuracy_score(y_test, y_pred)
-    recall = recall_score(y_test, y_pred)
+    # Set the 'id' column as the index for both dataframes
+    train_data.set_index('id', inplace=True)
+    test_data.set_index('id', inplace=True)
     
-    return accuracy, recall
-
-
-def answer_three():
-    from sklearn.metrics import recall_score, precision_score, accuracy_score
-    from sklearn.svm import SVC
+    # Separate the target variable
+    # The problem description states 'engagement' is the target
+    y_train = train_data['engagement']
     
-    # Train SVC with default parameters
-    svm = SVC().fit(X_train, y_train)
-    y_pred = svm.predict(X_test)
+    # Select features
+    # We only want to use columns that exist in the test set to avoid data leakage
+    # or shape mismatch errors.
+    features = test_data.columns
+    X_train = train_data[features]
+    X_test = test_data[features]
     
-    accuracy = accuracy_score(y_test, y_pred)
-    recall = recall_score(y_test, y_pred)
-    precision = precision_score(y_test, y_pred)
+    # Initialize the model
+    # RandomForest is a strong default choice for this assignment. 
+    # n_estimators=100 and max_depth=10 are standard starting points that prevent 
+    # gross overfitting while capturing patterns.
+    clf = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0)
     
-    return accuracy, recall, precision
-
-def answer_four():
-    from sklearn.metrics import confusion_matrix
-    from sklearn.svm import SVC
+    # Train the model on the full training data
+    clf.fit(X_train, y_train)
     
-    # Train SVC with specified parameters
-    svm = SVC(C=1e9, gamma=1e-07).fit(X_train, y_train)
+    # Predict probabilities for the positive class (True)
+    # predict_proba returns an array of shape (n_samples, 2), we want the second column
+    y_proba = clf.predict_proba(X_test)[:, 1]
     
-    # Get the decision function scores (distance to hyperplane)
-    y_scores = svm.decision_function(X_test)
+    # Create the results series with the correct index
+    results = pd.Series(y_proba, index=X_test.index, name='engagement')
     
-    # Apply the threshold of -220
-    # Any score greater than -220 is predicted as Class 1 (Fraud)
-    y_pred_threshold = y_scores > -220
-    
-    # Generate confusion matrix
-    cm = confusion_matrix(y_test, y_pred_threshold)
-    
-    return cm
-
-def answer_five():
-    from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import precision_recall_curve, roc_curve
-    
-    # Train Logistic Regression
-    lr = LogisticRegression(solver='liblinear').fit(X_train, y_train)
-    
-    # Get probability estimates for the positive class
-    y_scores = lr.decision_function(X_test)
-    
-    # 1. Precision-Recall Curve analysis
-    precision, recall, _ = precision_recall_curve(y_test, y_scores)
-    # Find the recall where precision is closest to 0.75
-    closest_zero_p = np.argmin(np.abs(precision - 0.75))
-    recall_at_p75 = recall[closest_zero_p]
-    
-    # 2. ROC Curve analysis
-    fpr, tpr, _ = roc_curve(y_test, y_scores)
-    # Find the TPR where FPR is closest to 0.16
-    closest_zero_fpr = np.argmin(np.abs(fpr - 0.16))
-    # The prompt asks for the higher TPR if there are close matches, 
-    # but argmin usually picks the first. In this specific dataset, 
-    # the index found is sufficient, but we grab the value directly.
-    tpr_at_fpr16 = tpr[closest_zero_fpr]
-    
-    return recall_at_p75, tpr_at_fpr16
-
-
-def answer_six():    
-    from sklearn.model_selection import GridSearchCV
-    from sklearn.linear_model import LogisticRegression
-
-    # Define the grid
-    param_grid = {'penalty': ['l1', 'l2'], 'C': [0.01, 0.1, 1, 10]}
-    
-    # Initialize the classifier and grid search
-    lr = LogisticRegression(solver='liblinear')
-    grid_clf = GridSearchCV(lr, param_grid, scoring='recall', cv=3)
-    
-    # Fit the grid search
-    grid_clf.fit(X_train, y_train)
-    
-    # Extract mean test scores and reshape to 4x2
-    # The results are usually ordered by the order of keys in param_grid.
-    # C changes slowly (rows), penalty changes fast (columns).
-    mean_test_scores = grid_clf.cv_results_['mean_test_score']
-    
-    return mean_test_scores.reshape(4, 2)
-
-
-
-
-
-
+    return results
