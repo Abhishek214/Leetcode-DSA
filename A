@@ -1,193 +1,80 @@
-# GRADED FUNCTION: tokenize_and_mask
-def tokenize_and_mask(text, 
-                      noise=0.15, 
-                      randomizer=np.random.uniform, 
-                      tokenizer=None):
-    """Tokenizes and masks a given input.
+def answer_zero():
+    # The number of features is the length of the feature_names array
+    return len(cancer.feature_names)
+def answer_one():
+    # Combine the data (features) and the target (labels)
+    data = np.c_[cancer.data, cancer.target]
+    columns = np.append(cancer.feature_names, ["target"])
+    
+    # Create the DataFrame
+    df = pd.DataFrame(data, columns=columns)
+    return df
+def answer_two():
+    cancerdf = answer_one()
+    
+    # Count the occurrences of each target (0 is malignant, 1 is benign in this dataset)
+    malignant_count = len(cancerdf[cancerdf['target'] == 0])
+    benign_count = len(cancerdf[cancerdf['target'] == 1])
+    
+    # Create the series with the specific index required
+    target = pd.Series([malignant_count, benign_count], index=['malignant', 'benign'])
+    return target
+from sklearn.model_selection import train_test_split
+def answer_three():
+    cancerdf = answer_one()
+    
+    # X includes all columns except the last one ('target')
+    X = cancerdf.iloc[:, :-1]
+    # y is just the 'target' column
+    y = cancerdf['target']
+    
+    return X, y
 
-    Args:
-        text (str or bytes): Text input.
-        noise (float, optional): Probability of masking a token. Defaults to 0.15.
-        randomizer (function, optional): Function that generates random values. Defaults to np.random.uniform.
-        tokenizer (function, optional): Tokenizer function. Defaults to tokenize.
-
-    Returns:
-        inps, targs: Lists of integers associated to inputs and targets.
-    """
+def answer_four():
+    X, y = answer_three()
     
-    # Current sentinel number (starts at 0)
-    cur_sentinel_num = 0
+    # Split the data with the specified random_state
+    X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=0)
     
-    # Inputs and targets
-    inps, targs = [], []
-
-    # Vocab_size
-    vocab_size = int(tokenizer.vocab_size())
-    
-    # EOS token id 
-    # Must be at the end of each target!
-    eos = tokenizer.string_to_id("</s>").numpy()
-    
-    ### START CODE HERE ###
-    
-    # prev_no_mask is True if the previous token was NOT masked, False otherwise
-    # set prev_no_mask to True
-    prev_no_mask = True
-    
-    # Loop over the tokenized text
-    for token in tokenizer.tokenize(text).numpy():
-        
-        # Generate a random value between 0 and 1
-        rnd_val = randomizer() 
-        
-        # Check if the noise is greater than a random value (weighted coin flip)
-        if noise > rnd_val:
-            
-            # Check if previous token was NOT masked
-            if prev_no_mask:
-                
-                # Current sentinel increases by 1
-                cur_sentinel_num += 1
-                
-                # Compute end_id by subtracting current sentinel value out of the total vocabulary size
-                end_id = vocab_size - cur_sentinel_num
-                
-                # Append end_id at the end of the targets
-                targs.append(end_id)
-                
-                # Append end_id at the end of the inputs
-                inps.append(end_id)
-                
-            # Append token at the end of the targets
-            targs.append(token)
-            
-            # set prev_no_mask accordingly
-            prev_no_mask = False
-
-        else:
-            
-            # Append token at the end of the inputs
-            inps.append(token)
-            
-            # Set prev_no_mask accordingly
-            prev_no_mask = True
-    
-    
-    # Add EOS token to the end of the targets
-    targs.append(eos)
-    
-    ### END CODE HERE ###
-    
-    return inps, targs
+    return X_train, X_test, y_train, y_test
 
 
-# GRADED FUNCTION: parse_squad
-def parse_squad(dataset):
-    """Extract all the answers/questions pairs from the SQuAD dataset
+from sklearn.neighbors import KNeighborsClassifier
 
-    Args:
-        dataset (dict): The imported JSON dataset
-
-    Returns:
-        inputs, targets: Two lists containing the inputs and the targets for the QA model
-    """
-
-    inputs, targets = [], []
-
-    ### START CODE HERE ###
+def answer_five():
+    X_train, X_test, y_train, y_test = answer_four()
     
-    # Loop over all the articles
-    for article in dataset:
-        
-        # Loop over each paragraph of each article
-        for paragraph in article['paragraphs']:
-            
-            # Extract context from the paragraph
-            context = paragraph['context']
-            
-            #Loop over each question of the given paragraph
-            for qa in paragraph['qas']:
-                
-                # If this question is not impossible and there is at least one answer
-                if len(qa['answers']) > 0 and not(qa['is_impossible']):
-                    
-                    # Create the question/context sequence
-                    question_context = 'question: ' + qa['question'] + ' context: ' + context
-                    
-                    # Create the answer sequence. Use the text field of the first answer
-                    answer = 'answer: ' + qa['answers'][0]['text']
-                    
-                    # Add the question_context to the inputs list
-                    inputs.append(question_context)
-                    
-                    # Add the answer to the targets list
-                    targets.append(answer)
+    # Initialize and fit the classifier with n_neighbors=1
+    knn = KNeighborsClassifier(n_neighbors=1)
+    knn.fit(X_train, y_train)
     
-    ### END CODE HERE ###
+    return knn
+def answer_six():
+    cancerdf = answer_one()
     
-    return inputs, targets
+    # Calculate the mean of each feature (excluding the target column)
+    means = cancerdf.mean()[:-1].values.reshape(1, -1)
+    
+    # Get the fitted model
+    knn = answer_five()
+    
+    # Predict
+    return knn.predict(means)
 
 
-
-# GRADED FUNCTION: answer_question
-def answer_question(question, model, tokenizer, encoder_maxlen=150, decoder_maxlen=50):
-    """
-    A function for question answering using the transformer model
-    Arguments:
-        question (tf.Tensor): Input data with question and context
-        model (tf.keras.model): The transformer model
-        tokenizer (function): The SentencePiece tokenizer
-        encoder_maxlen (number): Max length of the encoded sequence
-        decoder_maxlen (number): Max length of the decoded sequence
-    Returns:
-        _ (str): The answer to the question
-    """
+def answer_seven():
+    X_train, X_test, y_train, y_test = answer_four()
+    knn = answer_five()
     
-    ### START CODE HERE ###
-    
-    # QUESTION SETUP
-    
-    # Tokenize the question
-    tokenized_question = tokenizer.tokenize(question)
-    
-    # Add an extra dimension to the tensor
-    tokenized_question = tf.expand_dims(tokenized_question, 0) 
-    
-    # Pad the question tensor
-    padded_question = tf.keras.preprocessing.sequence.pad_sequences(tokenized_question,
-                                                                    maxlen=encoder_maxlen,
-                                                                    padding='post', 
-                                                                    truncating='post') 
-    # ANSWER SETUP
-    
-    # Tokenize the answer
-    # Hint: All answers begin with the string "answer: "
-    tokenized_answer = tokenizer.tokenize("answer: ")
-    
-    # Add an extra dimension to the tensor
-    tokenized_answer = tf.expand_dims(tokenized_answer, 0)
-    
-    # Get the id of the EOS token
-    eos = tokenizer.string_to_id("</s>") 
-    
-    # Loop for decoder_maxlen iterations
-    for i in range(decoder_maxlen):
-        
-        # Predict the next word using the model, the input document and the current state of output
-        next_word = transformer_utils.next_word(padded_question, tokenized_answer, model)
-        
-        # Concat the predicted next word to the output 
-        tokenized_answer = tf.concat([tokenized_answer, next_word], axis=1)
-        
-        # The text generation stops if the model predicts the EOS token
-        if next_word == eos:
-            break 
-    
-    ### END CODE HERE ###
-
-    return tokenized_answer
+    # Predict on the test set
+    return knn.predict(X_test)
 
 
-
+def answer_eight():
+    X_train, X_test, y_train, y_test = answer_four()
+    knn = answer_five()
+    
+    # Calculate score (accuracy)
+    return knn.score(X_test, y_test)
 
 
