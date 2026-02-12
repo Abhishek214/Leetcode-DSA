@@ -1,54 +1,122 @@
-def classify_document_with_scoring(document, business, categories):
-    document_lower = document.lower()
-    # keyword_scores will store: { "CategoryName": { "keyword1": count, "keyword2": count } }
-    keyword_details = {category: {} for category in categories}
-    total_category_scores = {category: 0 for category in categories}
+def scaled_dot_product_attention(q, k, v, mask):
+    """
+    Calculate the attention weights.
+    """
+    # Multiply q and k transposed.
+    matmul_qk = tf.matmul(q, k, transpose_b=True)
 
-    for category, keywords in categories.items():
-        for keyword, weight in keywords.items():
-            # Standardizing search based on your existing logic
-            if category in ['HKID', 'Email', 'National_identity_card', 'Certificate Of Incumbency', 'Certificate Of Incorporation', 'AOA']:
-                if category == "HKID":
-                    clean_doc = document.replace(' ', '')
-                    pattern = fr"{keyword.replace('-', r'[\-:\s]')}"
-                    matches = re.findall(pattern, clean_doc, re.IGNORECASE)
-                else:
-                    matches = re.findall(fr"\b{keyword}\b", document_lower, re.IGNORECASE)
-            else:
-                matches = re.findall(fr"\b{keyword}\b", document_lower, re.IGNORECASE)
+    # Scale matmul_qk with the square root of dk
+    dk = tf.cast(tf.shape(k)[-1], tf.float32)
+    scaled_attention_logits = matmul_qk / tf.math.sqrt(dk)
+
+    # Add the mask to the scaled tensor.
+    if mask is not None:
+        # We use a very large negative number so that these positions 
+        # get zeroed out after the softmax.
+        scaled_attention_logits += (1. - mask) * -1e9
+
+    # Softmax is normalized on the last axis (seq_len_k)
+    attention_weights = tf.nn.softmax(scaled_attention_logits, axis=-1)
+
+    # Multiply the attention weights by v
+    output = tf.matmul(attention_weights, v)
+
+    return output, attention_weights
+
+
+
+def call(self, x, enc_output, training, look_ahead_mask, padding_mask):
+    # BLOCK 1: Self-attention with look-ahead mask
+    mult_attn_out1, attn_weights_block1 = self.mha1(
+        x, x, x, look_ahead_mask, return_attention_scores=True, training=training)
+    
+    # Layer norm and residual connection
+    Q1 = self.layernorm1(mult_attn_out1 + x)
+
+    # BLOCK 2: Cross-attention (Q from Block 1, K and V from Encoder)
+    mult_attn_out2, attn_weights_block2 = self.mha2(
+        Q1, enc_output, enc_output, padding_mask, return_attention_scores=True, training=training)
+    
+    # Layer norm and residual connection
+    mult_attn_out2 = self.layernorm2(mult_attn_out2 + Q1)
             
-            count = len(matches)
-            if count > 0:
-                keyword_details[category][keyword] = count * weight
-                total_category_scores[category] += count * weight
+    # BLOCK 3: Feed-forward network
+    ffn_output = self.ffn(mult_attn_out2)
+    ffn_output = self.dropout_ffn(ffn_output, training=training)
+    
+    # Final layer norm and residual connection
+    out3 = self.layernorm3(ffn_output + mult_attn_out2)
 
-    if not any(total_category_scores.values()):
-        return 'UNKNOWN_DOCTYPE', 0, {}
+    return out3, attn_weights_block1, attn_weights_block2
 
-    max_score = max(total_category_scores.values())
-    max_score_category = max(total_category_scores, key=total_category_scores.get)
 
-    # Return the winning category, its total score, and the keyword breakdown
-    return max_score_category, max_score, keyword_details
 
-def classify_pages(page_text_dict, business, categories, logger):
-    data = {}
-    scores = {}
-    page_keyword_breakdown = {} # New dictionary to hold granular scores
 
-    for i, t in enumerate(page_text_dict.keys()):
-        text = page_text_dict[t]
-        cleaned_text = re.sub(r'[\s\W\d]', '', text)
-        
-        # Capture the new third return value (keyword_details)
-        label, score, details = classify_document_with_scoring(cleaned_text, business, categories)
-        
-        page_no = i + 1
-        scores[page_no] = score
-        data[page_no] = label
-        page_keyword_breakdown[page_no] = details # Store granular data
 
-    # ... (Keep existing range splitting logic) ...
+def call(self, x, enc_output, training, look_ahead_mask, padding_mask):
+    seq_len = tf.shape(x)[1]
+    attention_weights = {}
+    
+    # Create word embeddings 
+    x = self.embedding(x)
+    
+    # Scale embeddings
+    x *= tf.math.sqrt(tf.cast(self.embedding_dim, tf.float32))
+    
+    # Add positional encodings
+    x += self.pos_encoding[:, :seq_len, :]
 
-    return result, scores, page_keyword_breakdown
+    # Apply dropout
+    x = self.dropout(x, training=training)
 
+    # Pass through the stack of decoder layers
+    for i in range(self.num_layers):
+        x, block1, block2 = self.dec_layers[i](
+            x, enc_output, training, look_ahead_mask, padding_mask)
+
+        # Update attention weights dictionary for visualization
+        attention_weights[f'decoder_layer{i+1}_block1_self_att'] = block1
+        attention_weights[f'decoder_layer{i+1}_block2_decenc_att'] = block2
+    
+    return x, attention_weights
+
+
+
+
+def call(self, input_sentence, output_sentence, training, enc_padding_mask, look_ahead_mask, dec_padding_mask):
+    # Get encoder output
+    enc_output = self.encoder(input_sentence, training, enc_padding_mask)
+    
+    # Get decoder output and attention weights
+    dec_output, attention_weights = self.decoder(
+        output_sentence, enc_output, training, look_ahead_mask, dec_padding_mask)
+    
+    # Final linear layer and softmax
+    final_output = self.final_layer(dec_output)
+
+    return final_output, attention_weights
+
+
+
+
+.def next_word(model, encoder_input, output):
+    # Create necessary masks
+    enc_padding_mask = create_padding_mask(encoder_input)
+    look_ahead_mask = create_look_ahead_mask(tf.shape(output)[1])
+    dec_padding_mask = create_padding_mask(encoder_input)
+
+    # Run the model (training=False)
+    predictions, attention_weights = model(
+        encoder_input,
+        output,
+        False,
+        enc_padding_mask,
+        look_ahead_mask,
+        dec_padding_mask
+    )
+
+    # Select the last word from the seq_len dimension
+    predictions = predictions[:, -1:, :]
+    predicted_id = tf.cast(tf.argmax(predictions, axis=-1), tf.int32)
+    
+    return predicted_id
