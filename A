@@ -1,43 +1,20 @@
-def engagement_model():
-    import pandas as pd
-    import numpy as np
-    from sklearn.ensemble import RandomForestClassifier
-    from sklearn.model_selection import train_test_split
-    from sklearn.metrics import roc_auc_score
-    
-    # Load the datasets
-    train_data = pd.read_csv('assets/train.csv')
-    test_data = pd.read_csv('assets/test.csv')
-    
-    # Set the 'id' column as the index for both dataframes
-    train_data.set_index('id', inplace=True)
-    test_data.set_index('id', inplace=True)
-    
-    # Separate the target variable
-    # The problem description states 'engagement' is the target
-    y_train = train_data['engagement']
-    
-    # Select features
-    # We only want to use columns that exist in the test set to avoid data leakage
-    # or shape mismatch errors.
-    features = test_data.columns
-    X_train = train_data[features]
-    X_test = test_data[features]
-    
-    # Initialize the model
-    # RandomForest is a strong default choice for this assignment. 
-    # n_estimators=100 and max_depth=10 are standard starting points that prevent 
-    # gross overfitting while capturing patterns.
-    clf = RandomForestClassifier(n_estimators=100, max_depth=10, random_state=0)
-    
-    # Train the model on the full training data
-    clf.fit(X_train, y_train)
-    
-    # Predict probabilities for the positive class (True)
-    # predict_proba returns an array of shape (n_samples, 2), we want the second column
-    y_proba = clf.predict_proba(X_test)[:, 1]
-    
-    # Create the results series with the correct index
-    results = pd.Series(y_proba, index=X_test.index, name='engagement')
-    
-    return results
+                if label != 'UNKNOWN_DOCTYPE':
+                    # We found the first non-unknown page!
+                    anchor_label = label
+                    data[i+1] = label
+                    
+                    # Backfill any previous pages that were UNKNOWN
+                    if pending_unknown_pages:
+                        logger.info(f"Backfilling {len(pending_unknown_pages)} previous UNKNOWN pages with anchor label: {anchor_label}")
+                        for page_num in pending_unknown_pages:
+                            data[page_num] = anchor_label
+                        pending_unknown_pages = [] # Clear list
+                else:
+                    # Current page is unknown, and we haven't found an anchor yet
+                    data[i+1] = label
+                    pending_unknown_pages.append(i+1)
+            else:
+                # Anchor is already established; standard assignment
+                data[i+1] = label
+
+            scores[i+1] = score
