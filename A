@@ -1,20 +1,26 @@
-                if label != 'UNKNOWN_DOCTYPE':
-                    # We found the first non-unknown page!
-                    anchor_label = label
-                    data[i+1] = label
-                    
-                    # Backfill any previous pages that were UNKNOWN
-                    if pending_unknown_pages:
-                        logger.info(f"Backfilling {len(pending_unknown_pages)} previous UNKNOWN pages with anchor label: {anchor_label}")
-                        for page_num in pending_unknown_pages:
-                            data[page_num] = anchor_label
-                        pending_unknown_pages = [] # Clear list
-                else:
-                    # Current page is unknown, and we haven't found an anchor yet
-                    data[i+1] = label
-                    pending_unknown_pages.append(i+1)
-            else:
-                # Anchor is already established; standard assignment
-                data[i+1] = label
+​Task: Keyword Frequency Analysis and Expansion
+​1. Count Occurrences: > Scan the provided {combined_text} and identify the number of unique documents containing each of the following keywords (case-insensitive):
+​mortgage
+​personal loan application form
+​home mortgage loan
+​have mortgage loan
+​mortgage account application
+​remaining loan tenor
+​autopayroll salary (Note: Fixed typo from 'autopayroll sal ary')
+​mortgage repayment amount
+​home loan application
+​repayment date specified
+​proposed insured
+​discrepancies to confirm with branch
+​2. Suggest New Keywords:
+Based on the context of {combined_text}, suggest 10 new unique keywords that appear frequently. Provide these in:
+​English
+​Chinese (Traditional/Simplified as relevant to the text)
+​Regex Pattern (To handle common spelling variations or formatting differences)
+​Document Count for each suggested keyword.
+​Documents: > {combined_text}
 
-            scores[i+1] = score
+
+
+
+"For each Regex pattern, ensure it uses non-capturing groups and accounts for common OCR errors, such as missing spaces between words or common character substitutions (e.g., '0' for 'o')."
