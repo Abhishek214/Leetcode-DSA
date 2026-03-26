@@ -1,8 +1,21 @@
-Extract the Business Address components into a JSON object with the following keys: 
-"Room/Flat", "Floor", "Block", "Name of Building", "Number and Name of Street", "District", "Country".
+Extract the Business Address components into a JSON object with the following keys: "Room/Flat", "Floor", "Block", "Name of Building", "Number and Name of Street", "District", "Country".
 
-Constraint: If any field is blank in the image, set the value to "N/A". Do not invent data.
+CRITICAL VISUAL INSTRUCTIONS:
+1. The "Room/Flat" field consists of empty boxes separated by vertical lines. 
+2. DO NOT interpret these vertical printed grid lines as numbers. There is no typed or handwritten text in this field.
+3. KNOWN ERROR: You may incorrectly detect the number "31" or "1" due to the grid lines. If you see "31" in the Room/Flat field, ignore it entirely and output "N/A".
 
 Example of expected logic:
 - Floor: Written as "8" -> "8"
-- Room/Flat: Empty boxes -> "N/A"
+- Room/Flat: Empty boxes (do not read grid lines) -> "N/A"
+
+
+
+Extract the Business Address components. 
+
+First, analyze the image step-by-step:
+- Step 1: Look at the Room/Flat field. Are there actual handwritten or typed characters inside the boxes, or is it just empty grid lines?
+- Step 2: Look at the Floor field. Extract the value.
+(Continue for all fields)
+
+Finally, based on your analysis, output ONLY a JSON object. If a field contains only empty grid lines, the value must be "N/A".
