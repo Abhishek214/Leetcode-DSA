@@ -1,4 +1,8 @@
-Extract the Business Address from the provided document and format it as a single, combined string. Return a JSON object with exactly one key: "Business Address".
+Extract the address from the provided document and format it as a single, combined string. Return a JSON object with exactly one key: "Business Address".
+
+TARGET SECTION INSTRUCTION (CRITICAL):
+1. ONLY extract the address from the section explicitly labeled "Contact Information (Must be Completed)" / "Business Address".
+2. Strictly ignore any other address fields in the document, such as "Correspondence Address" or other sections.
 
 CRITICAL VISUAL INSTRUCTIONS:
 1. The "Room/Flat" field consists of empty boxes separated by vertical lines. 
