@@ -1,21 +1,3 @@
-Extract the following details from the "Other Important Information" section of the document and provide the results strictly in a single JSON object. 
-
-IMPORTANT INSTRUCTION FOR CHECKBOXES: For any field that uses checkboxes, look for the box marked with an "X" or a tick mark, and extract the text label right next to it. 
-
-Pay close attention to the specific extraction rules for each field below:
-
-- Purpose of Account: In case of 'Other', mention the specified text as well.
-- Reason for setting up account in Hong Kong: Look at the checkboxes and return the label of the marked box (e.g., "Work").
-- Regular/Monthly Account funding
-- Types of services / Nature of Activity
-- first deposit to the Account Different to ongoing account Funding
-- Source & Description of Account Opening Fund: Extract from the corresponding section. If "Others" is checked, include the text from the "Please Specify" line.
-- Level of Activity including Transaction Amount and Number of transactions: Extract this information from the "Expected Monthly Non-Cash Transaction" table. Format the data from the columns into a continuous string for each entry (e.g., "[Type of Transaction]: [Credit/Debit], Currency: [Currency], Monthly Frequency: [Monthly Frequency], Total Amount: [Total Amount]"). Join multiple columns together.
-- Joint Account Holder
-- Initial or ongoing Sources of Customer's wealth or Income: Return the label of the marked checkbox.
-- Do you expect to have any monthly non cash transactions: Return the label of the marked checkbox (Yes/No).
-- Do you expect to have any monthly cash transactions: Return the label of the marked checkbox (Yes/No).
-- Purpose of cash deposit and Withdrawals: If the "Other" checkbox is selected, do not just return "Other". You MUST extract the specific text written inside the adjacent "Please Specify" text box.
-- Do you receive any contributions from 3rd Party
-
-Where no information is provided or found for any of the above, then return "N/A".
+{
+  "prompt": "\nExtract the following details from the document and provide the results strictly in a JSON object. \n\nIMPORTANT INSTRUCTION FOR CHECKBOXES: For any field that uses checkboxes, look for the box marked with an \"X\" or a tick mark, and extract the text label right next to it. \n\nPay attention to the specific extraction rules for each field below:\n\n- Purpose of Account / Reason for setting up account in Hong Kong: Look at the checkboxes and return the label of the marked box (e.g., \"Work\").\n- Regular/Monthly Account funding\n- Types of services / Nature of Activities\n- Is first deposit to the Account Different to ongoing account Funding\n- Source & Description of Initial Opening Fund: (Extract from the corresponding section, including the \"Others (Please Specify)\" text and country of origin).\n- Level of Activity including Transaction Amount and Number of Transactions: Extract this information from the \"Expected Monthly Non-Cash Transaction\" table. Format the data from the columns into a continuous string for each entry (e.g., \"[Type of Transaction]: [Credit/Debit], Currency: [Currency], Monthly Frequency: [Monthly Frequency], Total Amount: [Total Amount]\"). Join multiple columns together.\n- Joint Account Holder\n- Initial or ongoing Source of Customer\\'s wealth or Income\n- Do you expect to have any monthly non-cash transactions\n- Do you expect to have any monthly cash transactions\n- Purpose of cash deposit and Withdrawals: If the \"Other\" checkbox is selected, do not just return \"Other\". You MUST extract the specific text written inside the adjacent \"Please Specify\" text box.\n- Do you receive any contributions from 3rd Party\n\nIf no information is provided or found for any of the above, strictly return \"N/A\".\n\n"
+}
