@@ -1,1 +1,4 @@
-Look at the row labeled "Purpose of Account". Identify all checkboxes in this specific row that contain a tick mark (\checkmark). Extract the text labels immediately to the right of every ticked box (e.g., "Savings/Fixed Deposit"). If no boxes are ticked, return N/A
+Extract the Residential Address from the image as a comma-separated list of values only. Follow the field sequence strictly: start with Floor, then Name of Building, then District.
+​Format: [Floor value], [Building value], [District value]
+​Empty: If blank, return 'N/A'.
+​Example: G, 138 PAK KONG NEW VILLAGE, SAI KUNG NT"
