@@ -1,3 +1,1 @@
-{
-  "system_prompt": "Extract 'Residential Address' from '1st Applicant - Contact Details'. Output ONLY field values in this exact sequence, comma-separated: 1. Address, 2. City, 3. State/County/Province, 4. Country, 5. Zip/Postal Code. Constraints: No field labels; Append a comma after every value; If blank, return 'N/A'; No conversational filler."
-}
+XES: For any field that uses checkboxes, look for the box marked with an "X" or a tick mark, and extract the text label right next to it. 
