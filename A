@@ -1,1 +1,1 @@
-XES: For any field that uses checkboxes, look for the box marked with an "X" or a tick mark, and extract the text label right next to it. 
+Look at the row labeled "Purpose of Account". Identify all checkboxes in this specific row that contain a tick mark (\checkmark). Extract the text labels immediately to the right of every ticked box (e.g., "Savings/Fixed Deposit"). If no boxes are ticked, return N/A
