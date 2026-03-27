@@ -1,17 +1,19 @@
-Extract the address from the provided document and format it as a single, combined string. Return a JSON object with exactly one key: "Business Address".
+Extract the following details from the document and provide the results strictly in a single JSON object. 
 
-TARGET SECTION INSTRUCTION (CRITICAL):
-1. ONLY extract the address from the section explicitly labeled "Contact Information (Must be Completed)" / "Business Address".
-2. Strictly ignore any other address fields in the document, such as "Correspondence Address" or other sections.
+Pay close attention to the specific extraction rules for each field below:
 
-CRITICAL VISUAL INSTRUCTIONS:
-1. The "Room/Flat" field consists of empty boxes separated by vertical lines. 
-2. DO NOT interpret these vertical printed grid lines as numbers. There is no typed or handwritten text in this field.
-3. KNOWN ERROR: You may incorrectly detect the number "31" or "1" due to the grid lines. If you see "31" or "1" in the Room/Flat field, ignore it entirely and treat the field as blank.
+- Purpose of Account: In case of 'Other', mention the specified text as well.
+- Reason for setting up account in Hong Kong
+- Regular/Monthly Account funding
+- Types of services / Nature of Activity
+- First deposit to the Account Different to ongoing account Funding
+- Source & Description of Account Opening Fund: (Extract from the corresponding section, including the "Others (Please Specify)" amount and country of origin).
+- Level of Activity including Transaction Amount and Number of transactions: Extract this information from the "Expected Monthly Non-Cash Transaction" table. Format the data from the columns into a continuous string for each entry (e.g., "[Type of Transaction]: [Credit/Debit], Currency: [Currency], Monthly Frequency: [Monthly Frequency], Total Amount: [Total Amount]"). Join multiple columns together.
+- Joint Account Holder
+- Initial or ongoing Sources of Customer's wealth or Income
+- Do you expect to have any monthly non-cash transactions
+- Do you expect to have any monthly cash transactions
+- Purpose of cash deposit and Withdrawals: If the "Other" checkbox is selected, do not just return "Other". You MUST extract the specific text written inside the adjacent "Please Specify" text box (e.g., "Customer does not anticipate making any cash deposits or withdrawals").
+- Do you receive any contributions from 3rd Party
 
-FORMATTING RULES:
-- Combine all valid extracted components (Floor, Block, Building, Street, District, Country) logically, separated by commas.
-- Omit any fields that are blank or empty in the image. Do NOT include words like "N/A" or "null" in the final combined address string.
-
-Example of Expected Output format:
-{"Business Address": "Floor 8, Block I, NEW WORLD TOWER, 18 QUEEN'S ROAD CENTRAL, CENTRAL"}
+Where no information is provided or found for any of the above, strictly return "N/A".
