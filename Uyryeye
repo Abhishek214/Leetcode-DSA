@@ -1,0 +1,301 @@
+PROMPT: INTERNET / ELECTRONIC BANKING - STRUCTURED INFORMATION EXTRACTION
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+OBJECTIVE
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+Extract structured information from Board Resolution (BR) and Minutes of Meeting (MoM) documents related to internet and electronic banking, authorized persons, and signing instructions with 100% accuracy and zero hallucination.
+
+Output must strictly follow the JSON structure defined at the end of this prompt.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+CRITICAL INSTRUCTIONS - READ CAREFULLY
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+1. SCOPE & SOURCE VALIDATION
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+- ONLY extract information from the Board Resolution or Minutes of Meeting sections (including their Annexes or Schedules).
+- NEVER infer, assume, or generate information not explicitly stated in the document.
+- If information is absent or unclear, return "N/A".
+- Do NOT create placeholder data or fictional entries.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+2. PRODUCT TYPE IDENTIFICATION
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+Identify the product type by detecting keywords in the document.
+
+For now only one product type is supported:
+"Internet / Electronic Banking" - identified by the presence of any of the following keywords:
+ - appointed System Administrators, make changes to the online banking profile
+ - subscribe for electronic banking, electronic banking services, internet banking services
+ - electronic banking, electronic platforms, E-banking, HSBCnet, H2H, API's, channels
+
+If these keywords are found, set:
+ "product_type": "Internet / Electronic Banking"
+
+If none of these keywords are found, do not extract any information and return:
+ {"Accounts": []}
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+3. PRODUCT CATEGORY IDENTIFICATION (AP ONLY)
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+For Internet / Electronic Banking, only the AP (Authorised Person) category is applicable. 
+
+A person is identified as AP if the document describes them as having general authority to represent the customer, open accounts, sign terms, and make mandate changes.
+Keywords identifying AP powers:
+ - Subscribe for electronic banking channels or platforms
+ - Authorise third parties to manage the Channels
+ - Appoint administrators and manage authorisation levels, delegate authority
+ - signs contracts, legally possible to resolve again, delegate, acting on behalf, represent, negotiate, draft and sign documents, appoint/revoke, open and manage, close.
+
+Rule:
+ - Always set "product_category": "AP" for all extracted entries in this section.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+4. ACCOUNT NUMBER EXTRACTION RULES
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+- CRITICAL INHERITANCE: Look for global or general "Signatory Lists", "Annexes", or "Schedules" located elsewhere in the document that list the company's account numbers. 
+- Extract specific account numbers that follow standard banking account number formats (e.g., 21345060, 21345052, 7891-2345-6789) from these global lists.
+- If the document applies electronic banking rules to specific accounts listed elsewhere in the document (e.g., "in connection with the Account(s)"), extract and link those specific account numbers to the Electronic Banking output.
+- IF the document explicitly mentions "All Accounts" or "All Bank Accounts" in relation to internet banking, extract and output exactly "All Accounts".
+- If absolutely no specific account number or "All Accounts" is mentioned anywhere in the document, set "Account Number": "N/A".
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+5. SUB-PRODUCT IDENTIFICATION & POPULATION RULES
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+HOW TO IDENTIFY SUB-PRODUCTS/SIGNING POWERS:
+- Extract each specific power, task, or sub-product explicitly stated in the document (e.g., "Approve user access forms", "reset of login PIN"). If listed as multiple bullet points, treat each distinct action/power as a separate Sub-Product.
+
+Step 1 - Link sub-product to account number
+ - Apply these extracted Electronic Banking sub-products to the Account Numbers extracted in Section 4.
+
+Step 2 - Apply clubbing rules
+ - Club account numbers together if the global List of Authorised Person AND all Sub-Products/Signing Rules are identical across those accounts.
+ - Each sub-product gets its own object in the "Sub-Products" array with its own "Signing Rule" array.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+6. LIST OF AUTHORISED PERSON (AP)
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+Field Name: "List of Authorised Person"
+
+CRITICAL INHERITANCE: You MUST extract the comprehensive list of personnel from the document's main "Signatory List" or Annex (e.g., all members of Group A and Group B) to populate this array. DO NOT limit this list to only the specific individuals named in the Electronic Banking section.
+
+Fields to extract per person:
+ | Field | Description |
+ |-------------------------|-------------------------------------------------------------------------------------------|
+ | Name | Full name as written in the document |
+ | Action | Normalized action - see Action Rules below |
+ | ID Number | Government ID if present, otherwise 'N/A' |
+ | Designation | Position/Role/Title (e.g., CFO, Director, Treasury) |
+ | Group | Group designation (e.g., Group A, Group B) |
+ | Specific Effective Date | Date in DD-MMM-YYYY format - see Effective Date Rules |
+
+ACTION NORMALIZATION RULES:
+ Only include a person if an explicit action word is present in the document's preamble or resolutions. Normalize as follows:
+ 'add' / 'accede' / 'adopt' -> "Add"
+ 'delete' / 'revoke' / 'resign' -> "Delete"
+ 'replace' / 'supersede' / 'rescind' -> "Replace"
+ 'amend' / 'update' / 'rectify' -> "Amend"
+
+ IF NO action is explicitly stated for a specific name -> "N/A"
+ NEVER infer actions from context alone without trigger words.
+
+ACTION ORDERING RULE:
+ Within the list, order entries as:
+ 1. All "Add" actions first
+ 2. All "Delete" actions second
+ 3. All "Replace" actions third
+ 4. All "Amend" actions fourth
+ 5. All "N/A" actions last
+
+SPECIFIC EFFECTIVE DATE RULES:
+ - If a specific effective date is mentioned for an individual person -> populate only for that person.
+ - If a single effective date is mentioned for ALL resolutions/persons in the document (e.g., "effective from 1 January 2025") -> populate that same date for every person in the list.
+ - If no effective date is mentioned -> 'N/A' for all
+ - Always convert to DD-MMM-YYYY format (e.g., 01-JAN-2025)
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+7. SIGNING RULE EXTRACTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+Fields:
+ "Signing Limit" - exact text outlining constraints, limits, or amounts (e.g., "In accordance with signatory list...", "up to HKD 500,000")
+ if left blank or marked with a dash ("-") -> use "N/A"
+
+ "Signing Rule" - exact signing pattern or authorized persons assigned to the power.
+ CRITICAL: If specific individuals (e.g., "Benoit Louis..." or "Robert Edward...") are explicitly named next to a Sub-Product/Power in the Electronic Banking section, capture their names exactly in this "Signing Rule" field.
+
+Rules:
+ - Capture exact limits and persons - never round, infer, or modify.
+ - If specific individuals are named instead of groups, extract their names exactly as written into the Signing Rule.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+8. PROCESSING WORKFLOW - FOLLOW THIS ORDER
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ 1. Detect product type using keywords -> if not found return {"Accounts": []}
+ 2. Extract global overarching actions (e.g., "supersede") and effective dates.
+ 3. Scan the entire document (including Annexes) for global Account Numbers.
+ 4. Scan the entire document (including Annexes) for the overarching Signatory List (Groups A/B) and populate the "List of Authorised Person".
+ 5. Extract all sub-products/powers mentioned under the specific electronic banking section.
+ 6. Extract Signing Limits and specific named individuals (Signing Rules) per Sub-Product.
+ 7. Apply sub-products and signing rules to the overarching account numbers and personnel list.
+ 8. Validate against Quality Assurance Checklist below.
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+OUTPUT JSON STRUCTURE
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+{
+  "Accounts": [
+    {
+      "product_type": "Internet / Electronic Banking",
+      "product_category": "AP",
+      "Account Number": "21345060, 21345052",
+      "List of Authorised Person": [
+        {
+          "Name": "Benoit Louis Marie Francois Valentin",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group A"
+        },
+        {
+          "Name": "Krueger Uwe",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group A"
+        },
+        {
+          "Name": "Ranjit Parag Dandekar",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group A"
+        },
+        {
+          "Name": "Robert Edward Williams",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group A"
+        },
+        {
+          "Name": "Belinda Tan Shuen Lin",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group A"
+        },
+        {
+          "Name": "Gareth Adrian Evans",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group B"
+        },
+        {
+          "Name": "Frederick Tristan Beresford Allen",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group B"
+        },
+        {
+          "Name": "Eddie Itai Madzikanda",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group B"
+        },
+        {
+          "Name": "Marta Malgorzata Siedlecka",
+          "Action": "Replace",
+          "ID Number": "N/A",
+          "Designation": "N/A",
+          "Specific Effective Date": "01-JAN-2025",
+          "Group": "Group B"
+        }
+      ],
+      "Sub-Products": [
+        {
+          "Sub-Product (Signing Power)": "Approve user access forms for persons authorised to approve payment instructions via internet banking facilities",
+          "Signing Rule": [
+            {
+              "Signing Limit": "In accordance with signatory list and signing limits as approved by the Board",
+              "Signing Rule": "Benoit Louis Marie Francois Valentin or Robert Edward Williams"
+            }
+          ]
+        },
+        {
+          "Sub-Product (Signing Power)": "Approve user access forms of persons authorised to grant viewing access only or delete such access to internet banking facilities",
+          "Signing Rule": [
+            {
+              "Signing Limit": "N/A",
+              "Signing Rule": "Benoit Louis Marie Francois Valentin or Robert Edward Williams"
+            }
+          ]
+        },
+        {
+          "Sub-Product (Signing Power)": "Approve user access forms for deletion of users (maker & approver) from internet banking facilities",
+          "Signing Rule": [
+            {
+              "Signing Limit": "N/A",
+              "Signing Rule": "Benoit Louis Marie Francois Valentin or Robert Edward Williams"
+            }
+          ]
+        },
+        {
+          "Sub-Product (Signing Power)": "Approve any operational matters of the internet banking facilities including reset of login PIN and token administration",
+          "Signing Rule": [
+            {
+              "Signing Limit": "N/A",
+              "Signing Rule": "Benoit Louis Marie Francois Valentin or Robert Edward Williams"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+QUALITY ASSURANCE CHECKLIST
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+Before submitting output, verify:
+ 1. Product type correctly identified using internet/electronic banking keywords -> empty array returned if not found
+ 2. Product category is always "AP"
+ 3. Account numbers correctly identified from Global Annex/Schedules
+ 4. Account numbers comma-separated when clubbed -> only when List and Sub-Products and Signing Rules are identical
+ 5. "List of Authorised Person" contains the full global list of signatories (e.g., all Group A and B members), NOT just those named in the specific electronic banking section.
+ 6. Each distinct Electronic Banking bullet point/power has its own Sub-Product and Signing Rule array
+ 7. All action verbs correctly normalized (Add / Delete / Replace / Amend / N/A) based on document preamble
+ 8. Specific Effective Date applied to all persons if the document states one overarching date
+ 9. No information invented, assumed, or hallucinated
+ 10. 'N/A' used only when information is genuinely absent (such as blank Limits)
+ 11. Specimen field not included in output
+
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+ERROR PREVENTION RULES
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+NEVER:
+ 1. Create names, dates, or amounts not in the document
+ 2. Limit the "List of Authorised Person" to only the individuals named under the Electronic Banking sub-section.
+ 3. Round or modify amounts
+ 4. Infer actions from context alone
+ 5. Create a separate currency field in Signing Rule
+ 6. Include Specimen field in output
+
+ALWAYS:
+ 1. Extract overarching Signatory Lists and Account Numbers from Annexes/Schedules first.
+ 2. Extract exact text as written for powers, names, and limits
+ 3. Preserve original formatting of names and titles
+ 4. Use 'N/A' for all missing mandatory fields
+ 5. Order actions -> Add, Delete, Replace, Amend, N/A
+ 6. Convert all dates to DD-MMM-YYYY format
+ 7. Validate every entry against the Quality Assurance Checklist before finalizing output
