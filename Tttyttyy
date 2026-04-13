@@ -1,0 +1,22 @@
+Extract data from the document into a JSON array of dictionaries representing flat table rows. Do not infer unstated data; use "NA" if missing.
+​Extraction Rules:
+​Company Name: Primary company explicitly mentioned.
+​CIN: Extract the 21-digit alphanumeric code; otherwise "NA".
+​Account Location: Account market/location; otherwise "NA".
+​Account Number: Extract all. If "all accounts" is stated, return "All accounts". (CRITICAL: Create a separate dictionary for EACH account number).
+​Account Currency: Mentioned currency (e.g., HKD, USD); otherwise "NA". Map to specific accounts if applicable.
+​Effective Date: Stated effective date, or fallback to meeting/resolution date.
+​Expiry Date: Written expiry date or exact terms (e.g., "Until further notice").
+​Formatting Rule: For companies with multiple accounts, duplicate the shared fields (Company, CIN, Location, Dates) across every dictionary row for that company.
+​Output Format:
+[
+  {
+    "Company Name": "",
+    "CIN": "",
+    "Account Location": "",
+    "Account Number": "", 
+    "Account Currency": "",
+    "Effective Date": "",
+    "Expiry Date": ""
+  }
+]
