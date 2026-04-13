@@ -1,0 +1,1 @@
+CIN: MUST be an exact 21-character alphanumeric string containing both letters and numbers (e.g., U29100MH2016FTC272467). Ignore strings that do not strictly meet this 21-character length and format. If missing, return "NA".
