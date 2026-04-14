@@ -16,19 +16,20 @@ FIELDS TO EXTRACT:
 
 2. DESIGNATION
    Extract the role/title of the signoff person (e.g., Director, Designated Member).
-   If no designation is explicitly stated next to or below their name in the signature block, set "NA".
+   Source: Look at the text immediately next to/below the signature line. IF no title is present there, scan the document's preamble or introductory paragraphs (e.g., "The undersigned, being all the members of the board of directors..."). 
+   If their capacity can be clearly established from the document's context, extract that title (e.g., "Director"). If it cannot be determined anywhere in the document, set "NA".
 
 OUTPUT JSON STRUCTURE:
 
 {
   "Signoff_Persons": [
     {
-      "Name": "John Smith",
+      "Name": "John Cooper",
       "Designation": "Director"
     },
     {
-      "Name": "Jane Doe",
-      "Designation": "NA"
+      "Name": "Duncan Fay",
+      "Designation": "Director"
     }
   ]
 }
