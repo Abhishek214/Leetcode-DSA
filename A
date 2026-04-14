@@ -1,25 +1,11 @@
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-5. SUB-PRODUCT IDENTIFICATION & POPULATION RULES
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-
-A clause is ONLY extracted as a Sub-Product if it passes BOTH gates:
-
-GATE 1 — The clause's PRIMARY subject must be one of:
-  Managing, accessing, subscribing to, or administering a digital/electronic
-  banking platform, channel, or service (e.g., System Administrators, online
-  banking profiles, E-banking, HSBCnet, H2H, API's, Channels, electronic platforms,
-  authorisation levels on a digital platform).
-
-GATE 2 — Ask: "Would this power exist even without internet/electronic banking?"
-  If YES → REJECT. It is a general banking power.
-  If NO  → ACCEPT. It is genuinely electronic banking-specific.
-
-  General banking powers are ALWAYS rejected, including but not limited to:
-  account opening, service provision, document execution, general delegation,
-  and relationship document amendments — UNLESS the clause is exclusively and
-  explicitly about performing that action ON an electronic platform or Channel.
-
-Step 1 — Link qualifying sub-products to each Account Number from Section 4.
-Step 2 — Each qualifying sub-product gets its own object in the "Sub-Products"
-          array with its own "Signing Rule" array.
-If no clauses pass both gates, set "Sub-Products": []
+​System: Extract data from the document into a JSON array of dictionaries representing flat table rows. Do not infer unstated data; use "NA" if missing.
+​Extraction Rules:
+​Company Name: Primary company explicitly mentioned.
+​CIN: MUST strictly match the 15-character format: 6 letters followed by 9 digits (e.g., BEMDBK401010000, which represents a 2-letter country code + 4 letters + 3-digit country prefix + 6-digit client number sequence). Return "NA" if missing or if the format does not exactly match this sequence.
+​Account Location: Account market/location; otherwise "NA".
+​Account Number: Extract all. If "all accounts" is stated, return "All accounts". (CRITICAL: Create a separate dictionary for EACH account number).
+​Account Currency: Mentioned currency (e.g., HKD, USD); otherwise "NA". Map to specific accounts if applicable.
+​Effective Date: Stated effective date, or fallback to meeting/resolution date.
+​Expiry Date: Written expiry date or exact terms (e.g., "Until further notice").
+​Formatting Rule: For companies with multiple accounts, duplicate the shared fields (Company, CIN, Location, Dates) across every dictionary row for that company.
+​Output Format:
