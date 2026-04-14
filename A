@@ -1,231 +1,58 @@
-PROMPT: INTERNET / ELECTRONIC BANKING - STRUCTURED INFORMATION EXTRACTION
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-OBJECTIVE
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-Extract structured information from Board Resolution (BR) and Minutes of Meeting (MoM) documents related to internet and electronic banking, authorized persons, and signing instructions with 100% accuracy and zero hallucination.
-
-Output must strictly follow the JSON structure defined at the end of this prompt.
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-CRITICAL INSTRUCTIONS - READ CAREFULLY
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-
-1. SCOPE & SOURCE VALIDATION
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-- ONLY extract information from the Board Resolution or Minutes of Meeting sections
-- NEVER infer, assume, or generate information not explicitly stated in the document
-- If information is absent or unclear, return "N/A"
-- Do NOT create placeholder data or fictional entries
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-2. PRODUCT TYPE IDENTIFICATION
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-Identify the product type by detecting keywords in the document.
-
-For now only one product type is supported:
-"Internet / Electronic Banking" - identified by the presence of any of the following keywords:
- - electronic banking services, internet banking services, electronic banking, electronic platforms
- - E-banking, HSBCnet, HSBCNET, H2H, API's
-
-If these keywords are found, set:
- "product_type": "Internet / Electronic Banking"
-
-If none of these keywords are found, do not extract any information and return:
- {"Accounts": []}
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-3. PRODUCT CATEGORY IDENTIFICATION (AP ONLY)
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-For Internet / Electronic Banking, only the AP (Authorised Person) category is applicable. 
-
-A person is identified as AP if the document describes them as having authority to:
- - Setup, manage, or act as an administrator for internet/electronic banking platforms
- - Appoint and revoke users on electronic platforms
- - Set and change signing conditions, limits, and approval workflows
- - Legally authorized to act on behalf of the company for E-banking setup
-
-Rule:
- - Always set "product_category": "AP" for all extracted entries in this category.
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-4. ACCOUNT NUMBER EXTRACTION RULES
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-- Extract specific account numbers that follow standard banking account number formats (e.g., 7891-2345-6789, FD-8976-5432)
-- IF the document explicitly mentions "All Accounts" or "All Bank Accounts" in relation to internet banking, extract and output exactly "All Accounts"
-- If no specific account number or "All Accounts" is mentioned, set "Account Number": "N/A"
-
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
 5. SUB-PRODUCT IDENTIFICATION & POPULATION RULES
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
 HOW TO IDENTIFY SUB-PRODUCTS/SIGNING POWERS:
-- Extract either the sub-product name or the specific power explicitly stated in the document (e.g., "System Administrator", "View Only", "Payment Initiation").
 
-Step 1 - Link sub-product to account number
- - If the document explicitly mentions a sub-product/power FOR a specific account number -> that sub-product belongs under that account number
- - If the document mentions a sub-product WITHOUT a specific account number -> set "Account Number": "N/A" (or "All Accounts" if explicitly stated) for that sub-product
+- CRITICAL FILTERING — TWO-GATE TEST:
+  A sub-product/power is ONLY eligible for extraction if it PASSES BOTH of the following gates:
 
-Step 2 - Apply clubbing rules
- - Club sub-products and account numbers where the List of Authorised Person AND Signing Rules are identical.
- - Each sub-product gets its own object in the "Sub-Products" array with its own "Signing Rule" array.
- - If a sub-product is mentioned but has no signing rule -> return: [{"Signing Limit": "N/A", "Signing Rule": "N/A"}]
+  GATE 1 — ELECTRONIC BANKING KEYWORD MATCH:
+  The clause must explicitly contain at least one of the following keywords or their direct synonyms:
+    • System Administrator(s) / administrators
+    • online banking profile
+    • subscribe for / subscription to electronic banking
+    • electronic banking services / internet banking services
+    • electronic banking / electronic platforms
+    • E-banking / HSBCnet / H2H / API's
+    • Channels / E-Channels (when referring to digital/online delivery channels)
+    • authorisation levels (in the context of digital platforms)
+    • third parties to manage Channels
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-6. LIST OF AUTHORISED PERSON (AP)
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-Field Name: "List of Authorised Person"
+  GATE 2 — NOT A GENERAL BANKING POWER:
+  Even if Gate 1 keywords appear nearby, REJECT the clause if its PRIMARY action is a general banking
+  activity such as:
+    • Opening or closing bank accounts
+    • Directing provision of banking services (general)
+    • Delegating authority in a general/non-digital context
+    • Terminating banking relationships
+    • Executing general supplemental documents or amendments
+  UNLESS the clause EXPLICITLY ties that action to electronic platforms/Channels/E-banking by name.
 
-Fields to extract per person:
- | Field | Description |
- |-------------------------|-------------------------------------------------------------------------------------------|
- | Name | Full name as written in the document |
- | Action | Normalized action - see Action Rules below |
- | ID Number | Government ID if present, otherwise 'N/A' |
- | Designation | Position/Role/Title (e.g., CFO, Director, Treasury) |
- | Group | Group designation (e.g., Group A, Group B) |
- | Specific Effective Date | Date in DD-MMM-YYYY format - see Effective Date Rules |
+- A clause that merely mentions "Accounts and E-Channels" in a list alongside general account powers
+  should only be extracted if the PRIMARY SUBJECT of the clause is the electronic channel/platform
+  itself (e.g., "operate and maintain... E-Channels and use the Services" may qualify;
+  "open any account with HSBC" does NOT qualify even if E-Channels appear elsewhere in the document).
 
-ACTION NORMALIZATION RULES:
- Only include a person if an explicit action word is present. Normalize as follows:
- 'appoint' / 'add' / 'accede' -> "add"
- 'revoke' / 'terminate' / 'dismiss' / 'withdraw' / 'cancel' / 'remove' / 'removed' / 'resign' / 'delete' -> "delete"
- 'change' / 'update' / 'modify' -> "change"
- 'amend' / 'rectify' -> "amend"
+- DO NOT extract:
+    ✗ "Direct the opening of any account with HSBC and the provision of any services by HSBC"
+    ✗ "Further delegate authority, including the power to sub-delegate" (general, not e-banking specific)
+    ✗ Any general mandate/signatory powers not tied to digital platforms
 
- IF NO action is explicitly stated for a specific name -> "N/A"
- NEVER infer add, delete, change, or amend from context alone.
+- DO extract (examples):
+    ✓ "Appoint and revoke System Administrators on HSBCnet"
+    ✓ "Make changes to the online banking profile"
+    ✓ "Subscribe for electronic banking / E-Channels"
+    ✓ "Authorise third parties to manage and/or access the Channels"
+    ✓ "Set authorisation levels of administrators on electronic platforms"
+    ✓ "Operate and maintain the E-Channels and use the Services" (only if E-Channels is the
+       primary subject, not bundled with general account opening)
 
-ACTION ORDERING RULE:
- Within the list, order entries as:
- 1. All "add" actions first
- 2. All "delete" actions second
- 3. All "change" actions third
- 4. All "amend" actions fourth
- 5. All "N/A" actions last
+Step 1 - Link sub-product to account number:
+  Apply qualifying Electronic Banking sub-products to the Account Numbers extracted in Section 4.
+  Duplicate sub-products for each individual account object if they apply to multiple accounts.
 
-SPECIFIC EFFECTIVE DATE RULES:
- - If a specific effective date is mentioned for an individual person -> populate only for that person, all others get 'N/A'
- - If a single effective date is mentioned for ALL persons in the list -> populate the same date for every person in the list
- - If no effective date is mentioned -> 'N/A' for all
- - Always convert to DD-MMM-YYYY format (e.g., 15-MAR-2024)
+Step 2 - Format Output:
+  Each qualifying sub-product gets its own object in the "Sub-Products" array with its own
+  "Signing Rule" array.
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-7. SIGNING RULE EXTRACTION
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-Fields:
- "Signing Limit" - exact amount range with currency (e.g., "up to HKD 500,000", "above USD 1,000,000")
- or special instruction e.g., "for internal transfers"
- if unlimited -> use "unlimited"
- if not mentioned -> use "N/A"
-
- "Signing Rule" - exact signing pattern (e.g., "Any 1 from Group A and any 1 from Group B signing JOINTLY")
-
-Rules:
- - Always include currency within the Signing Limit text
- - DO NOT create a separate currency field
- - Capture exact amounts - never round or modify
- - Capture correct logical operators (AND / OR / JOINTLY / SOLELY)
- - If signing instructions span multiple pages -> capture all completely, never truncate
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-8. PROCESSING WORKFLOW - FOLLOW THIS ORDER
-----------------------------------------------------------------------------------------------------------------------------------------------------------
- 1. Detect product type using keywords -> if not found return {"Accounts": []}
- 2. Identify the AP section using keywords from Section 3
- 3. Extract all account numbers (or "All Accounts")
- 4. Extract all sub-products/powers mentioned -> link to account numbers where explicitly stated
- 5. Apply clubbing rules
- 6. Extract List of Authorised Person
- 7. Extract Signing Rules per Sub-Product per entry
- 8. Validate against Quality Assurance Checklist below
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-OUTPUT JSON STRUCTURE
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-{
-  "Accounts": [
-    {
-      "product_type": "Internet / Electronic Banking",
-      "product_category": "AP",
-      "Account Number": "All Accounts",
-      "List of Authorised Person": [
-        {
-          "Name": "John Smith",
-          "Action": "add",
-          "ID Number": "P1234567",
-          "Designation": "Director",
-          "Specific Effective Date": "15-MAR-2024",
-          "Group": "Group A"
-        },
-        {
-          "Name": "Sarah Johnson",
-          "Action": "delete",
-          "ID Number": "P7654321",
-          "Designation": "CFO",
-          "Specific Effective Date": "N/A",
-          "Group": "Group B"
-        }
-      ],
-      "Sub-Products": [
-        {
-          "Sub-Product (Signing Power)": "System Administrator",
-          "Signing Rule": [
-            {
-              "Signing Limit": "N/A",
-              "Signing Rule": "Any 1 from Group A signing SOLELY"
-            }
-          ]
-        },
-        {
-          "Sub-Product (Signing Power)": "Payment Initiation",
-          "Signing Rule": [
-            {
-              "Signing Limit": "up to HKD 500,000",
-              "Signing Rule": "Any 1 from Group A and any 1 from Group B signing JOINTLY"
-            }
-          ]
-        }
-      ]
-    }
-  ]
-}
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-QUALITY ASSURANCE CHECKLIST
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-Before submitting output, verify:
- 1. Product type correctly identified using internet/electronic banking keywords -> empty array returned if not found
- 2. Product category is always "AP"
- 3. Account numbers correctly identified ("All Accounts" allowed if stated)
- 4. Account numbers comma-separated when clubbed -> only when List and Sub-Products and Signing Rules are identical
- 5. Each Sub-Product has its own Signing Rule array
- 6. "List of Authorised Person" is the only authorized array used
- 7. All action verbs correctly normalized (add / delete / change / amend / N/A)
- 8. Specific Effective Date per person if individual date -> same date for all if document states one date for all
- 9. Signing Limit includes currency -> no separate currency field
- 10. Signing patterns captured with correct logical operators (AND / OR / JOINTLY / SOLELY)
- 11. No information invented, assumed, or hallucinated
- 12. 'N/A' used only when information is genuinely absent
- 13. Specimen field not included in output
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-ERROR PREVENTION RULES
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-NEVER:
- 1. Create names, dates, or amounts not in the document
- 2. Club entries when List of Authorised Person differs
- 3. Round or modify amounts
- 4. Infer actions from context alone
- 5. Create a separate currency field in Signing Rule
- 6. Use any action verb when no action is explicitly mentioned
- 7. Include Specimen field in output
- 8. Assign a sub-product to an account number unless explicitly stated in the document
-
-ALWAYS:
- 1. Extract exact text as written
- 2. Preserve original formatting of names and titles
- 3. Extract account numbers, then link sub-products, then apply clubbing
- 4. Use 'N/A' for all missing mandatory fields
- 5. Order actions -> all add first, then delete, then change, then amend, then N/A
- 6. Convert all dates to DD-MMM-YYYY format
- 7. Validate every entry against the Quality Assurance Checklist before finalizing output
+  If NO sub-products pass both gates, set "Sub-Products": []
