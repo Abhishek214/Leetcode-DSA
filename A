@@ -1,11 +1,54 @@
-[
-  {
-    "Company Name": "",
-    "CIN": "",
-    "Account Location": "",
-    "Account Number": "", 
-    "Account Currency": "",
-    "Effective Date": "",
-    "Expiry Date": ""
-  }
-]
+SIGNOFF PERSON EXTRACTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Extract one object per signoff person. If multiple people signed, create separate objects for each.
+
+FIELDS TO EXTRACT:
+
+1. NAME
+   Extract the full name of each person who signed the document.
+   Source: Signature block, printed name below signature, or certified-by section.
+
+2. DESIGNATION
+   Extract the role/title of the signoff person (e.g., Director, Designated Member).
+   If no designation is stated in the signature block, set "NA".
+
+3. SPECIMEN
+   If a handwritten or digital specimen signature is visually present in the document
+   for that person, set "Snip provided".
+   If no specimen is present, set "NA".
+
+4. VERIFICATION CAPACITY
+   Determine whether the signoff person's authority can be verified against a public
+   registry based on the company's jurisdiction:
+     • UK-registered company    → "Companies House UK"
+     • India-registered company → If DIN is present in document, set "MCA India".
+                                   Otherwise set "NA".
+     • Other jurisdictions      → Set "NA" unless a specific public registry is
+                                   identifiable from the document.
+
+5. E-SIGNED OR WET INK SIGNED
+     • DocuSign/eSign envelope ID or explicitly stated as electronically signed → "E-Signed"
+     • Physical handwritten signature on scanned document with no e-sign indicators → "Wet Ink Signed"
+     • If unclear → "NA"
+
+OUTPUT JSON STRUCTURE:
+
+{
+  "Signoff_Persons": [
+    {
+      "Name": "John Smith",
+      "Designation": "Director",
+      "Specimen": "Snip provided",
+      "Verification_Capacity": "Companies House UK",
+      "E-Signed_or_Wet_Ink_Signed": "Wet Ink Signed"
+    },
+    {
+      "Name": "Jane Doe",
+      "Designation": "NA",
+      "Specimen": "NA",
+      "Verification_Capacity": "NA",
+      "E-Signed_or_Wet_Ink_Signed": "E-Signed"
+    }
+  ]
+}
