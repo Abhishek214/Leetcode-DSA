@@ -1,21 +1,25 @@
+----------------------------------------------------------------------------------------------------------------------------------------------------------
 5. SUB-PRODUCT IDENTIFICATION & POPULATION RULES
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-CRITICAL FILTERING — TWO-GATE TEST:
 A clause is ONLY extracted as a Sub-Product if it passes BOTH gates:
 
-GATE 1 — MUST contain at least one of these keywords (or direct synonyms):
-  System Administrator(s), online banking profile, subscribe for electronic banking,
-  electronic banking services, internet banking services, electronic platforms,
-  E-banking, HSBCnet, H2H, API's, Channels (in a digital context), authorisation levels
-  (on a digital platform), third parties to manage Channels.
+GATE 1 — The clause's PRIMARY subject must be one of:
+  Managing, accessing, subscribing to, or administering a digital/electronic
+  banking platform, channel, or service (e.g., System Administrators, online
+  banking profiles, E-banking, HSBCnet, H2H, API's, Channels, electronic platforms,
+  authorisation levels on a digital platform).
 
-GATE 2 — MUST NOT be a general banking power.
-  Reject any clause whose PRIMARY action is opening/closing accounts, general delegation
-  of authority, provision of general banking services, or execution of general documents —
-  UNLESS the clause explicitly and directly ties that action to electronic platforms or Channels.
+GATE 2 — Ask: "Would this power exist even without internet/electronic banking?"
+  If YES → REJECT. It is a general banking power.
+  If NO  → ACCEPT. It is genuinely electronic banking-specific.
+
+  General banking powers are ALWAYS rejected, including but not limited to:
+  account opening, service provision, document execution, general delegation,
+  and relationship document amendments — UNLESS the clause is exclusively and
+  explicitly about performing that action ON an electronic platform or Channel.
 
 Step 1 — Link qualifying sub-products to each Account Number from Section 4.
-Step 2 — Each qualifying sub-product gets its own object in the "Sub-Products" array
-          with its own "Signing Rule" array.
+Step 2 — Each qualifying sub-product gets its own object in the "Sub-Products"
+          array with its own "Signing Rule" array.
 If no clauses pass both gates, set "Sub-Products": []
