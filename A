@@ -5,25 +5,32 @@
 SCANNING RULE — SEARCH THE ENTIRE DOCUMENT:
 Do NOT limit sub-product extraction to sections explicitly headed "Electronic Banking"
 or similar. Scan ALL clauses, bullet points, and sub-clauses throughout the entire
-document (including general Bank Mandate sections, Common Powers, Annexes, etc.)
+document including general Bank Mandate sections, Common Powers, and Annexes,
 and apply the two-gate test to each one individually.
 
 A clause is ONLY extracted as a Sub-Product if it passes BOTH gates:
 
-GATE 1 — The clause's PRIMARY subject must be one of:
-  Managing, accessing, subscribing to, or administering a digital/electronic
-  banking platform, channel, or service (e.g., System Administrators, online
-  banking profiles, E-banking, HSBCnet, H2H, API's, Channels, electronic platforms,
-  internet banking facilities, authorisation levels on a digital platform).
+GATE 1 — The clause must explicitly contain at least one of these terms:
+  • internet banking facilities / internet banking
+  • electronic banking facilities / electronic banking
+  • electronic banking platforms / electronic platforms
+  • System Administrator(s)
+  • online banking profile
+  • E-banking / HSBCnet / H2H / API's
+  • Channels / E-Channels (in a digital context)
+  • authorisation levels (on a digital platform)
+  • third parties to manage Channels
+  • electronic banking systems / connectivity channels
+  • user access (in context of banking platforms)
+  • login PIN / token administration
+
+  IMPORTANT: Any clause containing the phrase "internet banking" or
+  "electronic banking" in ANY form automatically passes Gate 1,
+  regardless of the section it appears in.
 
 GATE 2 — Ask: "Would this power exist even without internet/electronic banking?"
   If YES → REJECT. It is a general banking power.
   If NO  → ACCEPT. It is genuinely electronic banking-specific.
-
-  General banking powers are ALWAYS rejected, including but not limited to:
-  account opening, service provision, document execution, general delegation,
-  and relationship document amendments — UNLESS the clause is exclusively and
-  explicitly about performing that action ON an electronic platform or Channel.
 
 Step 1 — Link qualifying sub-products to each Account Number from Section 4.
 Step 2 — Each qualifying sub-product gets its own object in the "Sub-Products"
