@@ -3,34 +3,33 @@
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
 
 SCANNING RULE — SEARCH THE ENTIRE DOCUMENT:
-Do NOT limit sub-product extraction to sections explicitly headed "Electronic Banking"
-or similar. Scan ALL clauses, bullet points, and sub-clauses throughout the entire
-document including general Bank Mandate sections, Common Powers, and Annexes,
-and apply the two-gate test to each one individually.
+Scan every individual clause, sub-clause, and bullet point across the entire document.
+When a section contains a numbered or lettered list (e.g., clauses a, b, c...),
+YOU MUST evaluate EACH lettered/numbered item SEPARATELY and independently.
+NEVER reject an entire list block because some items are general banking powers.
+Each item must pass or fail on its own merits.
 
 A clause is ONLY extracted as a Sub-Product if it passes BOTH gates:
 
-GATE 1 — The clause must explicitly contain at least one of these terms:
-  • internet banking facilities / internet banking
-  • electronic banking facilities / electronic banking
+GATE 1 — The clause itself must explicitly contain at least one of these terms:
+  • internet banking / internet banking facilities
+  • electronic banking / electronic banking facilities
   • electronic banking platforms / electronic platforms
+  • electronic banking systems / connectivity channels
   • System Administrator(s)
   • online banking profile
   • E-banking / HSBCnet / H2H / API's
   • Channels / E-Channels (in a digital context)
   • authorisation levels (on a digital platform)
-  • third parties to manage Channels
-  • electronic banking systems / connectivity channels
   • user access (in context of banking platforms)
   • login PIN / token administration
 
-  IMPORTANT: Any clause containing the phrase "internet banking" or
-  "electronic banking" in ANY form automatically passes Gate 1,
-  regardless of the section it appears in.
+  CRITICAL: Evaluate Gate 1 on the text of that individual clause only —
+  not on the heading or surrounding clauses.
 
 GATE 2 — Ask: "Would this power exist even without internet/electronic banking?"
-  If YES → REJECT. It is a general banking power.
-  If NO  → ACCEPT. It is genuinely electronic banking-specific.
+  If YES → REJECT.
+  If NO  → ACCEPT.
 
 Step 1 — Link qualifying sub-products to each Account Number from Section 4.
 Step 2 — Each qualifying sub-product gets its own object in the "Sub-Products"
