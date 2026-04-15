@@ -1,35 +1,19 @@
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-SIGNOFF PERSON EXTRACTION
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-
-Extract one object per signoff person. If multiple people signed, create separate objects for each.
-
-A "signoff person" is strictly defined as an individual who is executing, adopting, or authorizing the document itself (typically found in the main signature block or under clauses like "IN WITNESS WHEREOF"). 
-
-CRITICAL INSTRUCTION: Do NOT extract individuals who are merely listed, referenced, or authorized within the body of the document, exhibits, annexes, or schedules (e.g., authorized bank signatories, local signatories, etc.), unless they are also the ones executing the main agreement.
-
-FIELDS TO EXTRACT:
-
-1. NAME
-   Extract the full name of each person who signed the main document.
-   Source: Main signature block, printed name below the execution signature, or certified-by section.
-
-2. DESIGNATION
-   Extract the role/title of the signoff person (e.g., Director, Designated Member).
-   Source: Look at the text immediately next to/below the signature line. IF no title is present there, scan the document's preamble or introductory paragraphs (e.g., "The undersigned, being all the members of the board of directors..."). 
-   If their capacity can be clearly established from the document's context, extract that title (e.g., "Director"). If it cannot be determined anywhere in the document, set "NA".
-
-OUTPUT JSON STRUCTURE:
-
-{
-  "Signoff_Persons": [
-    {
-      "Name": "John Cooper",
-      "Designation": "Director"
-    },
-    {
-      "Name": "Duncan Fay",
-      "Designation": "Director"
-    }
-  ]
-}
+ Extract data from the document into a JSON array of dictionaries. Do not infer unstated data; use "NA" if missing.
+​Extraction Rules:
+​Company Name: Primary company explicitly mentioned.
+​CIN: MUST strictly match the 15-character format: 6 letters followed by 9 digits (e.g., BEMDBK401010000, representing a 2-letter country code + 4 letters + 3-digit country prefix + 6-digit client number sequence). Return "NA" if missing or if the format does not exactly match this sequence.
+​Account Number: Extract all specific account numbers and return them as a list/array of strings (e.g., ["21345060", "21345052"]). If the document generally states "all accounts", return ["All accounts"].
+​Account Currency: Mentioned currency (e.g., HKD, USD); otherwise "NA".
+​Effective Date: Stated effective date, or fallback to meeting/resolution date.
+​Expiry Date: Written expiry date or exact terms (e.g., "Until further notice").
+​Output Format:
+[
+  {
+    "Company Name": "",
+    "CIN": "",
+    "Account Number": [], 
+    "Account Currency": "",
+    "Effective Date": "",
+    "Expiry Date": ""
+  }
+]
