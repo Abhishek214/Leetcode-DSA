@@ -116,23 +116,34 @@ Fields to extract per person:
 
 ACTION NORMALIZATION RULES:
  Only include a person if an explicit action word is present. Normalize as follows:
- 'add' / 'accede' / 'adopt' -> "Add"
- 'delete' / 'revoke' / 'resign' -> "Delete"
- 'replace' / 'supersede' / 'rescind' -> "Replace"
- 'amend' / 'update' / 'rectify' -> "Amend"
 
- GLOBAL ACTION INHERITANCE (CONDITIONAL): Scan the document for global resolution clauses (e.g., "the above authorisations hereby supersede any and all prior resolutions"). ONLY IF "supersede", "replace", or "rescind" is found globally, you must set the "Action" to "Replace" for ALL individuals in the extracted list. DO NOT default to "Replace" if these keywords are missing.
- 
- AMEND LOGIC: If there are any changes in Signing rule/limit or group names changes it should be considered as "Amend".
+ 'appoint' / 'add' / 'accede' -> "add"
+ 'revoke' / 'terminate' / 'dismiss' / 'withdraw' / 'cancel' / 'remove' / 'removed' / 'resign' / 'delete' -> "delete"
 
- IF NO action is explicitly stated for a specific name AND no global override exists -> "N/A"
+ *** NEW - REPLACE ACTION ***
+ 'replace' / 'substitute' / 'amend' / 'update' / 'modify' 
+ / 'supersede' (when referring to a specific person being replaced) 
+ / any other synonym of replacement EXCEPT the word 'supersede' used in a whole-document context -> "replace"
+ *** END NEW ***
+
+ *** NEW - SUPERSEDE ACTION ***
+ 'supersede' - ONLY when used in the context that the ENTIRE document or resolution supersedes all previous resolutions or appointments (e.g., "all previous resolutions are hereby superseded by this document", "this resolution supersedes all prior board resolutions").
+
+ When this whole-document supersede context is detected:
+ -> Set Action = "supersede" for ALL persons in the list, overriding any earlier action (add / amend / replace) that was assigned to them earlier in the document.
+ -> "supersede" as an action takes the highest priority and overrides all other actions when the whole-document supersede context is present.
+ *** END NEW ***
+
+ If NO action is explicitly stated for a name -> "N/A"
+
+ NEVER infer any action from context alone - it must be explicitly stated.
 
 ACTION ORDERING RULE:
- Within the list, order entries as:
- 1. All "Add" actions first
- 2. All "Delete" actions second
- 3. All "Replace" actions third
- 4. All "Amend" actions fourth
+ Within each list, order entries as:
+ 1. All "add" actions first
+ 2. All "delete" actions second
+ 3. All "replace" actions third
+ 4. All "supersede" actions fourth
  5. All "N/A" actions last
 
 SPECIFIC EFFECTIVE DATE RULES:
@@ -159,10 +170,10 @@ Rules:
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
  1. Detect product type using keywords -> if not found return {"Accounts": []}
  2. Scan document headers for meeting dates to set the global Specific Effective Date.
- 3. Extract global overarching actions ONLY IF explicitly stated (e.g., look for "supersede" to globally trigger "Replace").
+ 3. Scan the document for whole-document supersede context to determine if a global "supersede" action applies.
  4. Scan the entire document (including Annexes) for global Account Numbers.
  5. Create ONE distinct JSON object in the "Accounts" array for EACH individual Account Number found.
- 6. Scan the entire document (including Annexes) for the overarching Signatory List. Populate the "List of Authorised Person" within EACH account object. Map overarching structural headings (like "Officer Signatories") to the Group field. Search the surrounding text for specific Designations (use "N/A" if none found). Apply global actions ONLY IF a trigger word was found in step 3.
+ 6. Scan the entire document (including Annexes) for the overarching Signatory List. Populate the "List of Authorised Person" within EACH account object. Map overarching structural headings (like "Officer Signatories") to the Group field. Search the surrounding text for specific Designations (use "N/A" if none found). Apply global "supersede" action ONLY IF a trigger word was found in step 3.
  7. Scan every individual clause against the GATE 1 and GATE 2 filtering rules. ONLY extract qualifying electronic/digital banking sub-products. Reject general banking clauses.
  8. Extract Signing Limits and Signing Rules per Sub-Product and apply them to EACH account object.
  9. Validate against Quality Assurance Checklist below.
@@ -179,7 +190,7 @@ OUTPUT JSON STRUCTURE (GENERALIZED EXAMPLE)
       "List of Authorised Person": [
         {
           "Name": "Jane Doe",
-          "Action": "Replace",
+          "Action": "supersede",
           "ID Number": "N/A",
           "Designation": "N/A",
           "Specific Effective Date": "27-SEP-2025",
@@ -187,7 +198,7 @@ OUTPUT JSON STRUCTURE (GENERALIZED EXAMPLE)
         },
         {
           "Name": "John Smith",
-          "Action": "Replace",
+          "Action": "supersede",
           "ID Number": "P1234567",
           "Designation": "Director",
           "Specific Effective Date": "27-SEP-2025",
@@ -229,7 +240,7 @@ Before submitting output, verify:
  5. List of Authorised Person contains the full global list from the Annex/Signatory List.
  6. "Name" is set to "N/A" if the document only provides a job title or role.
  7. Structural headers (e.g., 'Officer Signatories', 'Local Signatories') are mapped to the Group field, NOT Designation.
- 8. GLOBAL ACTION CHECK: "Replace" is ONLY applied globally if "supersede", "replace", or "rescind" is in the preamble.
+ 8. GLOBAL ACTION CHECK: "supersede" is ONLY applied globally if used in a whole-document context in the preamble/resolutions.
  9. EFFECTIVE DATE CHECK: Document meeting dates were scanned and applied globally.
  10. Each qualifying sub-product has its own Signing Rule array.
  11. Specimen field not included in output.
@@ -239,7 +250,7 @@ ERROR PREVENTION RULES
 ----------------------------------------------------------------------------------------------------------------------------------------------------------
 NEVER:
  1. Put structural headings (like "Officer Signatory") into the Designation field. They belong in the Group field.
- 2. Default the "Action" to "Replace" UNLESS explicit trigger words ("supersede", "replace", "rescind") are located in the document. If missing, use "N/A" or the person's specific listed action.
+ 2. Default the "Action" to "supersede" UNLESS explicit whole-document supersede context is located in the document. If missing, use "N/A" or the person's specific listed action.
  3. Combine or club multiple account numbers into a single JSON object.
  4. Extract non-electronic banking clauses (like general "terminate services") into the Sub-Products array.
  5. Include Specimen field in output.
