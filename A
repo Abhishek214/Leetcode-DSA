@@ -1,70 +1,71 @@
 PROMPT: INTERNET / ELECTRONIC BANKING - STRUCTURED INFORMATION EXTRACTION
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 OBJECTIVE
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-Extract structured information from Board Resolution (BR) and Minutes of Meeting (MoM) documents related to internet and electronic banking, authorized persons, and signing instructions with 100% accuracy and zero hallucination.
+-----------------------------------------------------------
+- Extract structured information from Board Resolution (BR) and Minutes of Meeting (MoM) documents related to internet and electronic banking, authorized persons, and signing instructions with 100% accuracy and zero hallucination.
+- Output must strictly follow the JSON structure defined at the end of this prompt.
 
-Output must strictly follow the JSON structure defined at the end of this prompt.
-
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 CRITICAL INSTRUCTIONS - READ CAREFULLY
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 
-1. SCOPE & SOURCE VALIDATION
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
+n1. SCOPE & SOURCE VALIDATION
+-----------------------------------------------------------
 - ONLY extract information from the Board Resolution or Minutes of Meeting sections (including their Annexes or Schedules).
 - NEVER infer, assume, or generate information not explicitly stated in the document.
-- If information is absent or unclear, return "N/A".
-- Do NOT create placeholder data or fictional entries.
+- IF information is absent or unclear, return "N/A".
+- DO NOT create placeholder data or fictional entries.
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-2. PRODUCT TYPE IDENTIFICATION
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
+n2. PRODUCT TYPE IDENTIFICATION
+-----------------------------------------------------------
 Identify the product type by detecting keywords in the document.
 
 For now only one product type is supported:
 "Internet / Electronic Banking" - identified by the presence of any of the following keywords:
- - appointed System Administrators, make changes to the online banking profile, subscribe for electronic banking
- - electronic banking services, internet banking services, electronic banking, electronic platforms
- - E-banking, HSBCnet, H2H, API's, channels
+- appointed System Administrators, make changes to the online banking profile, subscribe for electronic banking
+- electronic banking services, internet banking services, electronic banking, electronic platforms
+- E-banking, HSBCnet, H2H, API's, channels
 
 If these keywords are found, set:
- "product_type": "Internet / Electronic Banking"
+"product_type": "Internet / Electronic Banking"
 
 If none of these keywords are found, do not extract any information and return:
- {"Accounts": []}
+{"Accounts": []}
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-3. PRODUCT CATEGORY IDENTIFICATION (AP ONLY)
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-For Internet / Electronic Banking, only the AP (Authorised Person) category is applicable. 
+-----------------------------------------------------------
+n3. PRODUCT CATEGORY IDENTIFICATION (AP ONLY)
+-----------------------------------------------------------
+For Internet / Electronic Banking, only the AP (Authorised Person) category is applicable.
 
 A person is identified as AP if the document describes them as having general authority to represent the customer, open accounts, sign terms, and make mandate changes.
 Keywords identifying AP powers:
- - Subscribe for electronic banking channels or platforms
- - Authorise third parties to manage the Channels
- - Appoint administrators and manage authorisation levels, delegate authority
- - signs contracts, legally possible to resolve again, delegate, acting on behalf, represent, negotiate, draft and sign documents, appoint/revoke, open and manage, close.
+- Subscribe for electronic banking channels or platforms
+- Authorise third parties to manage the Channels
+- Appoint administrators and manage authorisation levels, delegate authority
+- signs contracts, legally possible to resolve again, delegate, acting on behalf, represent, negotiate, draft and sign documents, appoint/revoke, open and manage, close.
 
 Rule:
- - Always set "product_category": "AP" for all extracted entries in this section.
+- Always set "product_category": "AP" for all extracted entries in this section.
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-4. ACCOUNT NUMBER EXTRACTION RULES (STRICT SEPARATION)
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-- CRITICAL INHERITANCE: Look for global or general "Signatory Lists", "Annexes", or "Schedules" located elsewhere in the document that list the company's account numbers. 
-- Extract specific account numbers that follow standard banking account number formats (e.g., 21345060, 21345052, 7891-2345-6789) from these global lists.
-- STRICT NO-CLUBBING RULE: NEVER comma-separate or combine multiple account numbers into a single entry. Every individual account number must have its own distinct and separate object in the output "Accounts" array, even if the authorised persons and signing rules are 100% identical.
-- If the document applies electronic banking rules to specific accounts listed elsewhere in the document (e.g., "in connection with the Account(s)"), extract and link those specific account numbers to the Electronic Banking output, creating one object per account.
-- IF the document explicitly mentions "All Accounts" or "All Bank Accounts" in relation to internet banking, extract and output exactly "All Accounts".
-- If absolutely no specific account number or "All Accounts" is mentioned anywhere in the document, set "Account Number": "N/A".
+-----------------------------------------------------------
+n4. ACCOUNT NUMBER EXTRACTION RULES (MAPPED VS UNMAPPED LOGIC)
+-----------------------------------------------------------
+Look for global or general "Signatory Lists", "Annexes", or "Schedules" located elsewhere in the document that list the company's account numbers. 
+- Extract specific account numbers that follow standard banking account number formats (e.g., 21345060, 21345052, 7891-2345-6789).
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-5. SUB-PRODUCT IDENTIFICATION & POPULATION RULES
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+MAPPING LOGIC:
+- SCENARIO A (MAPPED/CORRESPONDING): If the document explicitly maps or corresponds specific lists of authorised persons to particular account numbers (e.g., a table where each column/section is a different account number with its own specific signatories), you MUST create a distinct and separate object in the "Accounts" array for EACH individual account number. In this case, "Account Number" will be an array containing just that one account number (e.g., ["21345060"]).
+- SCENARIO B (UNMAPPED/GLOBAL): If there is no evidence of a particular account number corresponding to a specific list of authorised persons (e.g., a single global list of signatories and a separate list of account numbers), you MUST combine them into a single object. Place all extracted account numbers into a list/array within the "Account Number" field (e.g., ["21345060", "21345052"]).
+- If the document explicitly mentions "All Accounts" or "All Bank Accounts" in relation to internet banking, set "Account Number": ["All Accounts"].
+- If absolutely no specific account number or "All Accounts" is mentioned anywhere in the document, set "Account Number": ["N/A"].
 
-SCANNING RULE — SEARCH THE ENTIRE DOCUMENT:
+-----------------------------------------------------------
+n5. SUB-PRODUCT IDENTIFICATION & POPULATION RULES
+-----------------------------------------------------------
+SCANNING RULE - SEARCH THE ENTIRE DOCUMENT:
 Scan every individual clause, sub-clause, and bullet point across the entire document. 
 When a section contains a numbered or lettered list (e.g., clauses a, b, c...), 
 YOU MUST evaluate EACH lettered/numbered item SEPARATELY and independently. 
@@ -73,61 +74,61 @@ Each item must pass or fail on its own merits.
 
 A clause is ONLY extracted as a Sub-Product if it passes BOTH gates:
 
-GATE 1 — The clause itself must explicitly contain at least one of these terms:
-  • internet banking / internet banking facilities
-  • electronic banking / electronic banking facilities
-  • electronic banking platforms / electronic platforms
-  • electronic banking systems / connectivity channels
-  • System Administrator(s)
-  • online banking profile
-  • E-banking / HSBCnet / H2H / API's
-  • Channels / E-Channels (in a digital context)
-  • authorisation levels (on a digital platform)
-  • user access (in context of banking platforms)
-  • login PIN / token administration
+GATE 1 - The clause itself MUST explicitly contain at least one of these terms:
+- internet banking / internet banking facilities
+- electronic banking / electronic banking facilities
+- electronic banking platforms / electronic platforms
+- electronic banking systems / connectivity channels
+- System Administrator(s)
+- online banking profile
+- E-banking / HSBCnet / H2H / API's
+- Channels / E-channels (in a digital context)
+- authorisation levels (on a digital platform)
+- user access (in context of banking platforms)
+- login PIN / token administration
 
-  CRITICAL: Evaluate Gate 1 on the text of that individual clause only — 
-  not on the heading or surrounding clauses.
+CRITICAL: Evaluate Gate 1 on the text of that individual clause only - 
+not on the heading or surrounding clauses.
 
-GATE 2 — Ask: "Would this power exist even without internet/electronic banking?"
-  If YES → REJECT (e.g., general account opening, signing checks, revoking mandates).
-  If NO  → ACCEPT (e.g., reset of login PIN, assigning digital user access, platform admin).
+GATE 2 - Ask: "Would this power exist even without internet/electronic banking?"
+ IF YES = REJECT 
+ IF NO = ACCEPT
 
-Step 1 — Link qualifying sub-products to each Account Number from Section 4. Duplicate the sub-products for each individual account object if they apply to multiple accounts.
-Step 2 — Each qualifying sub-product gets its own object in the "Sub-Products" array with its own "Signing Rule" array.
+Step 1 - Link qualifying sub-products to each Account Number object determined in Section 4. Duplicate the sub-products for each individual account object if there are multiple objects (Scenario A).
+Step 2 - Each qualifying sub-product gets its own object in the "Sub-Products" array with its own "Signing Rule" array. 
+
 If no clauses pass both gates, set "Sub-Products": []
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-6. LIST OF AUTHORISED PERSON (AP)
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
+n6. LIST OF AUTHORISED PERSON (AP)
+-----------------------------------------------------------
 Field Name: "List of Authorised Person"
 
 CRITICAL INHERITANCE: You MUST extract the comprehensive list of personnel from the document's main "Signatory List" or Annex. DO NOT limit this list to only the specific individuals named in the Electronic Banking section.
 
 Fields to extract per person:
- | Field | Description |
- |-------------------------|-------------------------------------------------------------------------------------------|
- | Name | Full human name. CRITICAL: If the document only lists generic roles/titles (e.g., "Director 1", "Designee") and NO specific human name is provided, you MUST set "Name" to "N/A" and extract the role into the "Designation" field. |
- | Action | Normalized action - see Action Rules below |
- | ID Number | Government ID if present, otherwise 'N/A' |
- | Designation | Position/Role/Title (e.g., CFO, Director, Treasury). You MUST search the surrounding context in the document for this. NEVER use structural headings (like "Officer Signatories" or "Group A") as a Designation. If a specific title is not mentioned for a person, return "N/A". |
- | Group | Group designation or category. If names are listed under a common structural heading or title in an Annex/Exhibit (e.g., "Officer Signatories", "Local Signatories", "Group A"), extract that overarching heading as the Group. |
- | Specific Effective Date | Date in DD-MMM-YYYY format - see Effective Date Rules |
+| Field | Description |
+|---|---|
+| Name | Full human name. CRITICAL: If the document only lists generic roles/titles (e.g., "Director 1", "Designee") and NO specific human name is provided, you MUST set "Name" to "N/A" and extract the role into the "Designation" field. |
+| Action | Normalized action - see Action Rules below |
+| ID Number | Government ID if present, otherwise 'N/A' |
+| Designation | Position/Role/Title (e.g., CFO, Director, Treasury). You MUST search the surrounding context in the document for this. NEVER use structural headings (like "Officer Signatories" or "Group A") as a Designation. If a specific title is not mentioned for a person, return "N/A". |
+| Group | Group designation or category. IF names are listed under a common structural heading or title in an Annex/Exhibit (e.g., "Officer Signatories", "Local Signatories", "Group A"), extract that overarching heading as the Group. |
+| Specific Effective Date | Date in DD-MMM-YYYY format - see Effective Date Rules |
 
 ACTION NORMALIZATION RULES:
- Only include a person if an explicit action word is present. Normalize as follows:
+Only include a person if an explicit action word is present. Normalize as follows:
+'appoint' / 'add' / 'accede' -> "Add"
+'revoke' / 'terminate' / 'dismiss' / 'withdraw' / 'cancel' / 'remove' / 'removed' / 'resign' / 'delete' -> "Delete"
+'replace' / 'substitute' / 'supersede' / 'rescind' -> "Replace"
+'amend' / 'update' / 'rectify' / 'modify' -> "Amend"
 
- 'appoint' / 'add' / 'accede' -> "Add"
- 'revoke' / 'terminate' / 'dismiss' / 'withdraw' / 'cancel' / 'remove' / 'removed' / 'resign' / 'delete' -> "Delete"
- 'replace' / 'substitute' / 'supersede' / 'rescind' -> "Replace"
- 'amend' / 'update' / 'rectify' / 'modify' -> "Amend"
+GLOBAL ACTION INHERITANCE (CONDITIONAL): Scan the document for global resolution clauses (e.g., "the above authorisations hereby supersede any and all prior resolutions"). ONLY IF "supersede", "replace", or "rescind" is found globally in a whole-document context, you must set the "Action" to "Replace" for ALL individuals in the extracted list. This whole-document trigger overrides any other individual actions. DO NOT default to "Replace" if these keywords are missing.
 
- GLOBAL ACTION INHERITANCE (CONDITIONAL): Scan the document for global resolution clauses (e.g., "the above authorisations hereby supersede any and all prior resolutions"). ONLY IF "supersede", "replace", or "rescind" is found globally in a whole-document context, you must set the "Action" to "Replace" for ALL individuals in the extracted list. This whole-document trigger overrides any other individual actions. DO NOT default to "Replace" if these keywords are missing.
- 
- AMEND LOGIC: If there are any changes in Signing rule/limit or group names changes it should be considered as "Amend".
+AMEND LOGIC: If there are any changes in Signing rule/limit or group names changes it should be considered as "Amend".
 
- IF NO action is explicitly stated for a specific name AND no global override exists -> "N/A"
- NEVER infer any action from context alone - it must be explicitly stated.
+IF NO action is explicitly stated for a specific name AND no global override exists -> "N/A"
+NEVER infer any action from context alone - it must be explicitly stated.
 
 ACTION ORDERING RULE:
  Within each list, order entries as:
@@ -138,111 +139,111 @@ ACTION ORDERING RULE:
  5. All "N/A" actions last
 
 SPECIFIC EFFECTIVE DATE RULES:
- - Scan the document's header, preamble, or title for board meeting dates or resolution passing dates (e.g., "Meeting held on 27th September 2025"). If found, apply this as the global effective date for ALL persons (e.g., "27-SEP-2025").
+ - Scan the document's header, preamble, or title for board meeting dates or resolution passing dates (e.g., "Meeting held on 27th September 2025" or "passed on [Date]"). If found, apply this as the global effective date for ALL persons (e.g., "27-SEP-2025").
  - If a specific effective date is mentioned for an individual person -> populate only for that person.
  - If no effective date is mentioned anywhere in the document or header -> 'N/A' for all
  - Always convert to DD-MMM-YYYY format (e.g., 27-SEP-2025)
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-7. SIGNING RULE EXTRACTION
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-Fields:
- "Signing Limit" - exact text outlining constraints, limits, or amounts (e.g., "In accordance with signatory list...", "up to HKD 500,000")
- if left blank or marked with a dash ("-") -> use "N/A"
+-----------------------------------------------------------
+n7. SIGNING RULE EXTRACTION
+-----------------------------------------------------------
+Field Name: 
+"Signing Limit" - exact text outlining constraints, limits, or amounts (e.g., "In accordance with signatory list...", "up to HKD 500,000")
+if left blank or marked with a dash ("-") -> use "N/A"
 
- "Signing Rule" - exact signing pattern or authorized persons assigned to the power.
- CRITICAL: If a global resolution dictates how signatories must act (e.g., "acting jointly with one (1) other Officer Signatory..."), capture this exact phrasing as the Signing Rule for the Sub-Products. If specific individuals or roles (e.g., "Director 1, Director 2, or Designee") are named next to a sub-product, capture them exactly.
+"Signing Rule" - exact signing pattern or authorized persons assigned to the power.
+CRITICAL: If a global resolution dictates how signatories must act (e.g., "acting jointly with one (1) other Officer Signatory..."), capture this exact phrasing as the Signing Rule for the Sub-Products. If specific individuals or roles (e.g., "Director 1, Director 2, or Designee") are named next to a sub-product, capture them exactly.
 
 Rules:
  - Capture exact limits and persons - never round, infer, or modify.
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
-8. PROCESSING WORKFLOW - FOLLOW THIS ORDER
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
+n8. PROCESSING WORKFLOW - FOLLOW THIS ORDER
+-----------------------------------------------------------
  1. Detect product type using keywords -> if not found return {"Accounts": []}
  2. Scan document headers for meeting dates to set the global Specific Effective Date.
  3. Scan the document for whole-document supersede/replace context to determine if a global "Replace" action applies.
- 4. Scan the entire document (including Annexes) for global Account Numbers.
- 5. Create ONE distinct JSON object in the "Accounts" array for EACH individual Account Number found.
- 6. Scan the entire document (including Annexes) for the overarching Signatory List. Populate the "List of Authorised Person" within EACH account object. Map overarching structural headings (like "Officer Signatories") to the Group field. Search the surrounding text for specific Designations (use "N/A" if none found). Apply global "Replace" action ONLY IF a trigger word was found in step 3.
+ 4. Scan the entire document (including Annexes) for Account Numbers and determine if they are mapped to specific signatory lists or unmapped.
+ 5. Apply Mapping Logic: If mapped (Scenario A), create a distinct JSON object for EACH account number. If unmapped (Scenario B), create ONE distinct JSON object and include all account numbers in a list/array.
+ 6. Scan the entire document (including Annexes) for the overarching Signatory List(s) and populate "List of Authorised Person" for the respective account object(s). Map overarching structural headings (like "Officer Signatories") to the Group field. Search the surrounding text for specific Designations (use "N/A" if none found). Apply global actions ONLY IF a trigger word was found in step 3.
  7. Scan every individual clause against the GATE 1 and GATE 2 filtering rules. ONLY extract qualifying electronic/digital banking sub-products. Reject general banking clauses.
- 8. Extract Signing Limits and Signing Rules per Sub-Product and apply them to EACH account object.
+ 8. Extract Signing Limits and Signing Rules per Sub-Product and apply them to the respective account object(s).
  9. Validate against Quality Assurance Checklist below.
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 OUTPUT JSON STRUCTURE (GENERALIZED EXAMPLE)
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 {
-  "Accounts": [
+ "Accounts": [
+  {
+   "product_type": "Internet / Electronic Banking",
+   "product_category": "AP",
+   "Account Number": ["12345678", "87654321"], // Can be one or multiple based on Mapped/Unmapped logic
+   "List of Authorised Person": [
     {
-      "product_type": "Internet / Electronic Banking",
-      "product_category": "AP",
-      "Account Number": "12345678",
-      "List of Authorised Person": [
-        {
-          "Name": "Jane Doe",
-          "Action": "Replace",
-          "ID Number": "N/A",
-          "Designation": "N/A",
-          "Specific Effective Date": "27-SEP-2025",
-          "Group": "Officer Signatories"
-        },
-        {
-          "Name": "John Smith",
-          "Action": "Replace",
-          "ID Number": "P1234567",
-          "Designation": "Director",
-          "Specific Effective Date": "27-SEP-2025",
-          "Group": "Local Signatories"
-        }
-      ],
-      "Sub-Products": [
-        {
-          "Sub-Product (Signing Power)": "Authorise third parties to manage and/or access the Channels on the Company's behalf",
-          "Signing Rule": [
-            {
-              "Signing Limit": "N/A",
-              "Signing Rule": "Any 1 Officer Signatory acting jointly with any 1 Local Signatory"
-            }
-          ]
-        },
-        {
-          "Sub-Product (Signing Power)": "Reset of login PIN and token administration",
-          "Signing Rule": [
-            {
-              "Signing Limit": "N/A",
-              "Signing Rule": "Any 1 Officer Signatory solely"
-            }
-          ]
-        }
-      ]
+     "Name": "N/A",
+     "Action": "Add",
+     "ID Number": "N/A",
+     "Designation": "Director 1",
+     "Specific Effective Date": "27-SEP-2025",
+     "Group": "Group A"
+    },
+    {
+     "Name": "John Smith",
+     "Action": "N/A",
+     "ID Number": "P1234567",
+     "Designation": "Local Signatory",
+     "Specific Effective Date": "27-SEP-2025",
+     "Group": "Group B"
     }
-  ]
+   ],
+   "Sub-Products": [
+    {
+     "Sub-Product (Signing Power)": "Authorise third parties to manage and/or access the Channels on the Company's behalf",
+     "Signing Rule": [
+      {
+       "Signing Limit": "N/A",
+       "Signing Rule": "Any 1 Officer Signatory acting jointly with any 1 Local Signatory"
+      }
+     ]
+    },
+    {
+     "Sub-Product (Signing Power)": "Reset of login PIN and token administration",
+     "Signing Rule": [
+      {
+       "Signing Limit": "N/A",
+       "Signing Rule": "Any 1 Officer Signatory solely"
+      }
+     ]
+    }
+   ]
+  }
+ ]
 }
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 QUALITY ASSURANCE CHECKLIST
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 Before submitting output, verify:
  1. Product type correctly identified using internet/electronic banking keywords.
- 2. Account numbers are NEVER combined. Every individual account number has its own separate object.
+ 2. MAPPED VS UNMAPPED CHECK: Account numbers are separated into distinct objects ONLY if they have explicitly mapped signatories. Otherwise, they are combined into a single object's "Account Number" array.
  3. SUB-PRODUCT GATE CHECK: Every extracted sub-product must contain a GATE 1 keyword AND fail the GATE 2 test (it must be a digital-only power).
  4. General banking clauses (like "open/close accounts" or "sign checks") were successfully REJECTED unless they explicitly mention electronic platforms within the same clause.
  5. List of Authorised Person contains the full global list from the Annex/Signatory List.
  6. "Name" is set to "N/A" if the document only provides a job title or role.
  7. Structural headers (e.g., 'Officer Signatories', 'Local Signatories') are mapped to the Group field, NOT Designation.
- 8. GLOBAL ACTION CHECK: "Replace" is ONLY applied globally if "supersede", "replace", or "rescind" is used in a whole-document context in the preamble/resolutions.
+ 8. GLOBAL ACTION CHECK: "Replace" is ONLY applied globally if "supersede", "replace", or "rescind" is in the preamble.
  9. EFFECTIVE DATE CHECK: Document meeting dates were scanned and applied globally.
  10. Each qualifying sub-product has its own Signing Rule array.
  11. Specimen field not included in output.
 
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 ERROR PREVENTION RULES
-----------------------------------------------------------------------------------------------------------------------------------------------------------
+-----------------------------------------------------------
 NEVER:
  1. Put structural headings (like "Officer Signatory") into the Designation field. They belong in the Group field.
- 2. Default the "Action" to "Replace" UNLESS explicit whole-document supersede/replace context is located in the document. If missing, use "N/A" or the person's specific listed action.
- 3. Combine or club multiple account numbers into a single JSON object.
+ 2. Default the "Action" to "Replace" UNLESS explicit trigger words ("supersede", "replace", "rescind") are located in the document. If missing, use "N/A" or the person's specific listed action.
+ 3. Separate account numbers into multiple JSON objects if there is no explicit evidence mapping them to different signatory lists.
  4. Extract non-electronic banking clauses (like general "terminate services") into the Sub-Products array.
  5. Include Specimen field in output.
 
@@ -250,7 +251,7 @@ ALWAYS:
  1. Check document headers for the Meeting Date and use it as the Specific Effective Date.
  2. Search surrounding text to find specific individual Designations; if absent, map to "N/A".
  3. Strictly bound Sub-Product extraction to clauses directly modifying electronic "Channels" or digital platforms.
- 4. Create a separate entry in the output for every single Account Number found.
+ 4. Group account numbers into a list/array within a single object if they share the exact same global signatory list without explicit segregation.
  5. Extract exact text as written for powers, names, and limits.
  6. Evaluate document preambles and global resolutions to set "Action" fields correctly for all persons.
  7. Use 'N/A' for all missing mandatory fields.
