@@ -1,50 +1,28 @@
-INSTRUCTION 367: Extract one object per signoff person. If multiple people signed, create separate objects for each.
+INSTRUCTION 367: Extract one object per signoff person. Create separate objects for each signer.
 
-A "signoff person" is strictly defined as an individual who is executing, adopting, or authorizing the document itself. This includes:
-- Individuals in the main signature block (e.g., "IN WITNESS WHEREOF" sections)
-- Individuals with handwritten or printed signatures followed by their name and title
-- Individuals who appear below signature lines with their printed name and role/designation
-- Executive signatories on official company documents (e.g., CEO, CFO, Chairman, Board Members)
+DEFINITION: A "signoff person" executes, adopts, or authorizes the document. Includes:
+- Signatures with printed name and title below
+- "IN WITNESS WHEREOF" signature blocks
+- Executive signatories (CEO, CFO, Chairman, etc.)
 
-CRITICAL INSTRUCTION: Do NOT extract individuals who are merely listed, referenced, or authorized within the body of the document, exhibits, annexes, or schedules (e.g., authorized bank signatories, local signatories, etc.), UNLESS they are also executing the main agreement.
+EXCLUDE: Individuals merely listed in body, exhibits, or schedules unless also signing the main document.
 
 FIELDS TO EXTRACT:
 
-1. NAME\n
-   Source: Main signature block, printed name below the execution signature, or certified-by section.
-   Instructions: Extract the full legal name of each person who signs. Look immediately below execution signature, or certified-by section. If no title is present there, scan the document's preamble or introductory paragraphs.
-   If their capacity can be clearly established from the document's context, extract that title (e.g., "Director"). If it cannot be determined anywhere in the document, set "NA".
-
-2. DESIGNATION\n
-   Source: Look at the text immediately next to/below the signature line. If no title is present there, scan the document's preamble or introductory paragraphs.
-   Instructions: Extract the role/title of the signoff person (e.g., Director, Chief Executive Officer, Chairman, Board Member, CEO, CFO, Authorized Signatory).
-   If their capacity can be clearly established from the document's context, extract that title. If it cannot be determined anywhere in the document, set "NA".
+1. NAME: Full legal name of signer (below signature line or signature block)
+2. DESIGNATION: Title/role (below name, or inferred from document context). Use "NA" if unclear.
 
 OUTPUT JSON STRUCTURE:
 
 {
   "Signoff_Persons": [
     {
-      "Name": "John Smith",
-      "Designation": "Director"
+      "Name": "Ola Källenius",
+      "Designation": "Chairman of the Board of Management"
     },
     {
-      "Name": "Jane Doe",
+      "Name": "Harald Wilhelm",
       "Designation": "Chief Financial Officer"
     }
   ]
 }
-
-SIGNATURE IDENTIFICATION PATTERNS:
-- Pattern 1: [Handwritten/Printed Signature] \n [Printed Name] \n [Title/Designation]
-- Pattern 2: [Signature Block with "IN WITNESS WHEREOF" or similar] followed by name and title
-- Pattern 3: [Name and Title printed below signature line]
-- Pattern 4: [Official company document with executive-level signatories identified by role]
-
-PROCESSING INSTRUCTIONS:
-1. Scan the entire document for all signature areas
-2. For each signature found, identify the associated printed name and title
-3. Create one JSON object per signatory (do NOT combine multiple people into one object)
-4. Include all executives and authorized signatories on the main document
-5. Verify each name and title appear in the document or can be inferred from context
-6. Do NOT omit signatories because their title seems unclear - use "NA" if needed but still include the person
