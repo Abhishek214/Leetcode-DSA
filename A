@@ -1,16 +1,24 @@
-INSTRUCTION 367: Extract one object per signoff person. Create separate objects for each signer.
+----------------------------------------------------------------------------------------------------------------------------------------------------------
+SIGNOFF PERSON EXTRACTION
+----------------------------------------------------------------------------------------------------------------------------------------------------------
 
-DEFINITION: A "signoff person" executes, adopts, or authorizes the document. Includes:
-- Signatures with printed name and title below
-- "IN WITNESS WHEREOF" signature blocks
-- Executive signatories (CEO, CFO, Chairman, etc.)
+Extract one object per signoff person. If multiple people signed, create separate objects for each.
 
-EXCLUDE: Individuals merely listed in body, exhibits, or schedules unless also signing the main document.
+A "signoff person" is defined as an individual who has a dedicated execution block intended for a signature. 
+
+CRITICAL EXCLUSION: Do NOT extract individuals from tabular lists, signature specimen schedules, or authorization rosters (e.g., lists of "Authorized Signatories" or "Local Signatories" in an Exhibit or Annex) unless they also have a primary execution block at the end of the main document text.
 
 FIELDS TO EXTRACT:
 
-1. NAME: Full legal name of signer (below signature line or signature block)
-2. DESIGNATION: Title/role (below name, or inferred from document context). Use "NA" if unclear.
+1. NAME
+   Extract the full printed name of each person in the signature block. 
+   Source: Look below or adjacent to the physical signature line.
+
+2. DESIGNATION
+   Extract the role/title of the signoff person.
+   Source: Look directly below or next to the printed name. 
+   Note: If the title is bilingual or multi-lingual (e.g., "Vorstandsvorsitzender / Chairman of the Board of Management"), extract the entire string exactly as written. 
+   If no title is present in the signature block, scan the document's introductory preamble to infer their capacity (e.g., "Director"). If it cannot be determined anywhere, set "NA".
 
 OUTPUT JSON STRUCTURE:
 
@@ -18,11 +26,11 @@ OUTPUT JSON STRUCTURE:
   "Signoff_Persons": [
     {
       "Name": "Ola Källenius",
-      "Designation": "Chairman of the Board of Management"
+      "Designation": "Vorstandsvorsitzender / Chairman of the Board of Management"
     },
     {
       "Name": "Harald Wilhelm",
-      "Designation": "Chief Financial Officer"
+      "Designation": "Finanzvorstand / Chief Financial Officer"
     }
   ]
 }
