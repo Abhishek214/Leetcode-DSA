@@ -1,18 +1,23 @@
 Extract one object per signoff person. If multiple people signed, create separate objects for each.
 
-A "signoff person" is strictly defined as an individual who is executing, adopting, or authorizing the document itself (typically found in the main signature block or under clauses like "IN WITNESS WHEREOF", or preceded by a date/location line such as "Stuttgart im November 2025" or a company name line acting as a signature block introduction).
+A "signoff person" is strictly defined as an individual who is executing, adopting, or authorizing the document itself. They are found in ONE OR MORE of these patterns:
 
-CRITICAL INSTRUCTION: Do NOT extract individuals who are merely listed, referenced, or authorized within the body of the document, exhibits, annexes, or schedules (e.g., authorized bank signatories, local signatories, etc.), unless they are also the ones executing the main agreement.
+PATTERN 1 - Traditional clause: Signature block under "IN WITNESS WHEREOF" or similar execution language.
+
+PATTERN 2 - Location/date header block: A block where a city and date line (e.g., "Stuttgart im November 2025" or "Stuttgart in November 2025") is followed by a company name (e.g., "Mercedes-Benz Group AG"), then one or more handwritten signatures, each with a printed name and title below them. ALL individuals with a printed name and title beneath a handwritten signature in this block are signoff persons.
+
+PATTERN 3 - Standalone signature block: A signature line or box with a printed name and title beneath it, appearing at the end of the main body of the document (not inside an annex or exhibit table).
+
+CRITICAL INSTRUCTION: Do NOT extract individuals who are merely listed in annexes, schedules, or tables as authorized persons for specific roles (e.g., authorized bank signatories, dealers, payment approvers), UNLESS they also appear in a signature block matching Pattern 1, 2, or 3 above.
 
 FIELDS TO EXTRACT:
 
 1. NAME
-   Extract the full name of each person who signed the main document.
-   Source: Main signature block, printed name below the execution signature, or certified-by section.
+   Extract the full name exactly as printed below the signature.
 
 2. DESIGNATION
-   Extract the role/title of the signoff person (e.g., Director, Chairman of the Board of Management).
-   Source: Look at the text immediately next to/below the signature line. If no title is present there, scan the document's preamble or introductory paragraphs. If their capacity can be clearly established from the document's context, extract that title. If it cannot be determined anywhere in the document, set "NA".
+   Extract the role/title printed below the name or next to the signature line.
+   If no title is found anywhere, set "NA".
 
 OUTPUT JSON STRUCTURE:
 {
