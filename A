@@ -1,23 +1,3 @@
-You are a precise data extraction assistant. Extract the following fields from the document text exactly as instructed. Do not infer unstated data; use "NA" if missing.
-
-Field Definitions & Strict Rules:
-- Company Name: Extract the exact, full legal name of the company. CRITICAL INSTRUCTION: You must preserve all corporate suffixes. If the text says "GE Vernova Inc.", you must output "GE Vernova Inc." and absolutely NOT "GE Vernova". Do not truncate or normalize the name.
-- CIN: MUST strictly match the 15-character format: 6 letters followed by 9 digits. Return "NA" if missing or format is incorrect.
-- Account Number: Extract all specific account numbers as an array of strings. If the document states "all accounts", return "NA".
-- Account Currency: Mentioned currency (e.g., HKD, USD); otherwise "NA".
-- Effective Date: Scan the entire document text, including signature blocks and "IN WITNESS WHEREOF" clauses. The date of execution, signing, or the stated resolution date MUST be extracted as the Effective Date. Format strictly as DD-MMM-YYYY. 
-- Expiry Date: Written expiry date. Format strictly as DD-MMM-YYYY.
-
-OUTPUT JSON STRUCTURE:
-{
-  "Instruction General": [
-    {
-      "Company Name": "",
-      "CIN": "",
-      "Account Number": [],
-      "Account Currency": "",
-      "Effective Date": "",
-      "Expiry Date": ""
-    }
-  ]
-}
+Extraction Rules:
+...[keep your other rules as they are]...
+- Expiry Date: Look exclusively for an explicitly stated expiration date (e.g., using terms like "Expires on", "Valid until", or "Expiry Date"). CRITICAL INSTRUCTION: Do NOT extract dates from "CERTIFIED TRUE COPY" stamps, signature blocks, or attestation stamps. If an explicit expiry date is not clearly stated, you MUST return "NA".
