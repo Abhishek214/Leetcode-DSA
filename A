@@ -1,20 +1,5 @@
-​Extract one object per signoff person. If multiple people signed, create separate objects for each. A "signoff person" is strictly defined as an individual who is executing, adopting, or authorizing the document itself (typically found in the main signature block or under clauses like "IN WITNESS WHEREOF").
-​CRITICAL INSTRUCTION: Do NOT extract individuals who are merely listed, referenced, or authorized within the body of the document, exhibits, annexes, or schedules (e.g., authorized bank signatories, local signatories, etc.), unless they are also the ones executing the main agreement.
-​FIELDS TO EXTRACT:
-1. NAME
-Extract the full name of each person who signed the main document. Source: Main signature block, printed name below the execution signature, or certified-by section.
-​2. DESIGNATION
-Extract the formal role/title of the signoff person. Source: First, check the document's preamble or introductory paragraphs to identify the specific capacity in which the individuals are signing (e.g., "Managing Directors of the Board"). If the preamble is not specific, use the title immediately next to/below the signature line. If the signature block uses a generic term (e.g., "Authorized Signatory" or "Legal Representative") but the preamble provides a specific corporate title, prioritize the specific title from the preamble. If it cannot be determined anywhere in the document, set "NA".
-​OUTPUT JSON STRUCTURE:
-{
-  "Signoff_Persons": [
-    {
-      "Name": "John Smith",
-      "Designation": "Managing Director"
-    },
-    {
-      "Name": "Jane Doe",
-      "Designation": "NA"
-    }
-  ]
-}
+2. DESIGNATION
+Extract the formal role/title of the signoff person. 
+CRITICAL OVERRIDE RULE: You MUST first read the preamble and introductory paragraphs (e.g., clauses starting with "THE UNDERSIGNED"). If the document collectively defines the capacity of the signers in the opening text (e.g., stating they are the "managing directors of the Company and together constituting the entire board"), you MUST extract this collective definition (e.g., "Managing Director of the Board") as the Designation.
+NEGATIVE CONSTRAINT: Do NOT extract generic titles found immediately below the signature lines (such as "Director - Legal Representative", "Authorized Signatory", etc.) if a more descriptive collective title exists in the document's preamble. 
+Only fallback to the text immediately next to/below the signature line if the preamble completely fails to define their capacity. If it cannot be determined anywhere, set "NA".
