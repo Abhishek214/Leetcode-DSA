@@ -1,8 +1,12 @@
-Please extract the Meeting Date from the relevant section of the Board of Directors resolution document. Ensure that the extraction is primarily performed from the resolution page. The Meeting Date should be accurately identified and presented in a clear format. 
+Please extract the 'Resolution Date' from the provided document.
 
-If an explicit Meeting Date is not found, look for the execution or signing date. This date may be located near the signatures (either above, below, or adjacent) or within an "IN WITNESS WHEREOF" clause. Take this signing date as the Meeting Date only if the meeting date is not explicitly mentioned.
+Extraction Logic:
+1. Primary Search: Look for an explicitly stated "Meeting Date" or "Date of Resolution".
+2. Fallback Search: If an explicit meeting date is not found, extract the document's execution or signing date. Specifically scan for dates within "IN WITNESS WHEREOF" clauses or dates located near the signatory blocks.
 
-- Ensure that the extraction is precise and relevant to the specified sections of the documents.
-- Validate the format of the extracted date to ensure it adheres to the standard date format: DD-MMM-YYYY.
+Crucial Instructions:
+- Do NOT restrict the search to only the "resolution page". You must extract the date even if it appears on a signature page, attestation page, or officer's certificate page.
+- Treat the date found via the Fallback Search as the final date.
+- Validate and format the extracted date strictly as: DD-MMM-YYYY.
 
-Provide the label name as 'Resolution Date'. If absolutely no explicit meeting date or signing date can be found in the document, then give the value as 'N/A'.
+Provide the output with the label 'Resolution Date'. If absolutely no date is found anywhere using the logic above, return 'N/A'.
