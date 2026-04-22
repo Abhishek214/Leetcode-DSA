@@ -1,3 +1,20 @@
-Extraction Rules:
-...[keep your other rules as they are]...
-- Expiry Date: Look exclusively for an explicitly stated expiration date (e.g., using terms like "Expires on", "Valid until", or "Expiry Date"). CRITICAL INSTRUCTION: Do NOT extract dates from "CERTIFIED TRUE COPY" stamps, signature blocks, or attestation stamps. If an explicit expiry date is not clearly stated, you MUST return "NA".
+​Extract one object per signoff person. If multiple people signed, create separate objects for each. A "signoff person" is strictly defined as an individual who is executing, adopting, or authorizing the document itself (typically found in the main signature block or under clauses like "IN WITNESS WHEREOF").
+​CRITICAL INSTRUCTION: Do NOT extract individuals who are merely listed, referenced, or authorized within the body of the document, exhibits, annexes, or schedules (e.g., authorized bank signatories, local signatories, etc.), unless they are also the ones executing the main agreement.
+​FIELDS TO EXTRACT:
+1. NAME
+Extract the full name of each person who signed the main document. Source: Main signature block, printed name below the execution signature, or certified-by section.
+​2. DESIGNATION
+Extract the formal role/title of the signoff person. Source: First, check the document's preamble or introductory paragraphs to identify the specific capacity in which the individuals are signing (e.g., "Managing Directors of the Board"). If the preamble is not specific, use the title immediately next to/below the signature line. If the signature block uses a generic term (e.g., "Authorized Signatory" or "Legal Representative") but the preamble provides a specific corporate title, prioritize the specific title from the preamble. If it cannot be determined anywhere in the document, set "NA".
+​OUTPUT JSON STRUCTURE:
+{
+  "Signoff_Persons": [
+    {
+      "Name": "John Smith",
+      "Designation": "Managing Director"
+    },
+    {
+      "Name": "Jane Doe",
+      "Designation": "NA"
+    }
+  ]
+}
