@@ -1,12 +1,8 @@
-Please extract the 'Resolution Date' from the provided document.
+Extract the effective date of this document and label it as 'Resolution Date'.
 
-Extraction Logic:
-1. Primary Search: Look for an explicitly stated "Meeting Date" or "Date of Resolution".
-2. Fallback Search: If an explicit meeting date is not found, extract the document's execution or signing date. Specifically scan for dates within "IN WITNESS WHEREOF" clauses or dates located near the signatory blocks.
+Definition of Resolution Date: This is the date the resolution was passed OR the date the document was executed. It can be found in the main body, near the signatures, or explicitly within execution clauses such as "IN WITNESS WHEREOF".
 
-Crucial Instructions:
-- Do NOT restrict the search to only the "resolution page". You must extract the date even if it appears on a signature page, attestation page, or officer's certificate page.
-- Treat the date found via the Fallback Search as the final date.
-- Validate and format the extracted date strictly as: DD-MMM-YYYY.
-
-Provide the output with the label 'Resolution Date'. If absolutely no date is found anywhere using the logic above, return 'N/A'.
+Task:
+- Locate this date (e.g., December 5, 2025).
+- Format the extracted date strictly as DD-MMM-YYYY.
+- If absolutely no date exists anywhere in the text, output 'N/A'.
