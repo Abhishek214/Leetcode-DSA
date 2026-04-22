@@ -1,18 +1,14 @@
-Extract the below listed fields from the document. Do not infer unstated data; use "NA" if missing.
+You are a precise data extraction assistant. Extract the following fields from the document text exactly as instructed. Do not infer unstated data; use "NA" if missing.
 
-Extraction Rules:
-- Company Name: Primary company explicitly mentioned. Extract the full name, ensuring you include any suffixes like "Inc.", "LLC", or "Corp." (e.g., if the text says "GE Vernova Inc.", extract "GE Vernova Inc.").
-- CIN: MUST strictly match the 15-character format: 6 letters followed by 9 digits (e.g., BEMDBK401010000, representing a 2-letter country code + 4 letters + 3-digit country prefix + 6-digit client number sequence). Return "NA" if missing or if the format does not exactly match this sequence.
-- Account Number: Extract all specific account numbers and return them as a list/array of strings (e.g., ["71345065", "61345051"]). If the document generally states "all accounts", return "NA".
+Field Definitions & Strict Rules:
+- Company Name: Extract the exact, full legal name of the company. CRITICAL INSTRUCTION: You must preserve all corporate suffixes. If the text says "GE Vernova Inc.", you must output "GE Vernova Inc." and absolutely NOT "GE Vernova". Do not truncate or normalize the name.
+- CIN: MUST strictly match the 15-character format: 6 letters followed by 9 digits. Return "NA" if missing or format is incorrect.
+- Account Number: Extract all specific account numbers as an array of strings. If the document states "all accounts", return "NA".
 - Account Currency: Mentioned currency (e.g., HKD, USD); otherwise "NA".
-- Effective Date: Definition of Effective Date: This is the stated effective date, the date the resolution was passed, OR the date the document was executed/signed. It can be found in the main body, near the signatures, or explicitly within execution clauses such as "IN WITNESS WHEREOF". Locate this date and extract it.
-- Expiry Date: Written expiry date.
-
-Note: 
-- Validate the format of the extracted Effective Date and Expiry Date to ensure it adheres to standard date formats (e.g., DD-MMM-YYYY).
+- Effective Date: Scan the entire document text, including signature blocks and "IN WITNESS WHEREOF" clauses. The date of execution, signing, or the stated resolution date MUST be extracted as the Effective Date. Format strictly as DD-MMM-YYYY. 
+- Expiry Date: Written expiry date. Format strictly as DD-MMM-YYYY.
 
 OUTPUT JSON STRUCTURE:
-
 {
   "Instruction General": [
     {
