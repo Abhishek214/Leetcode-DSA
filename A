@@ -1,11 +1,11 @@
 Extract the below listed fields from the document. Do not infer unstated data; use "NA" if missing.
 
 Extraction Rules:
-- Company Name: Extract the full legal name of the primary company exactly as written in the text. You MUST include any corporate suffixes (e.g., "Inc.", "LLC", "Corp.", "Ltd."). Do not truncate the name.
+- Company Name: Primary company explicitly mentioned. Extract the full name, ensuring you include any suffixes like "Inc.", "LLC", or "Corp." (e.g., if the text says "GE Vernova Inc.", extract "GE Vernova Inc.").
 - CIN: MUST strictly match the 15-character format: 6 letters followed by 9 digits (e.g., BEMDBK401010000, representing a 2-letter country code + 4 letters + 3-digit country prefix + 6-digit client number sequence). Return "NA" if missing or if the format does not exactly match this sequence.
 - Account Number: Extract all specific account numbers and return them as a list/array of strings (e.g., ["71345065", "61345051"]). If the document generally states "all accounts", return "NA".
 - Account Currency: Mentioned currency (e.g., HKD, USD); otherwise "NA".
-- Effective Date: Extract the stated effective date. If not explicitly labeled as an effective date, fallback to the document's execution or signing date (e.g., the date found in the "IN WITNESS WHEREOF" clause or near the signatures).
+- Effective Date: Definition of Effective Date: This is the stated effective date, the date the resolution was passed, OR the date the document was executed/signed. It can be found in the main body, near the signatures, or explicitly within execution clauses such as "IN WITNESS WHEREOF". Locate this date and extract it.
 - Expiry Date: Written expiry date.
 
 Note: 
