@@ -1,52 +1,25 @@
-def get_user_adoption_chart_data():
-    conn = getconn()
-    cur = conn.cursor()
-    
-    # Define the 12-month sequence exactly matching the requested chart order
-    months_headers = [
-        "Dec - 2025", "Nov - 2025", "Oct - 2025", "Sep - 2025", 
-        "Aug - 2025", "Jul - 2025", "Jun - 2025", "May - 2025", 
-        "Apr - 2025", "Mar - 2025", "Feb - 2025", "Jan - 2025"
-    ]
-    
-    # Query to fetch unique PSID count grouped by journey and month-year string format
-    query = """
-        SELECT 
-            COALESCE(mljourney, 'Unknown') as journey,
-            TO_CHAR(created_at, 'Mon - YYYY') as month_year,
-            COUNT(DISTINCT psid) as unique_users
-        FROM public.user_uploaded_document_details
-        WHERE created_at >= '2025-01-01 00:00:00' 
-          AND created_at <= '2025-12-31 23:59:59'
-        GROUP BY COALESCE(mljourney, 'Unknown'), TO_CHAR(created_at, 'Mon - YYYY');
+@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
+async def view_user_adoption(DCREST_JWT_TOKEN: str = Header()):
     """
-    
+    Extract unique user counts (distinct PSIDs) grouped by journey and calendar month.
+    Output is formatted into a native array matrix matching frontend chart datasets.
+    """
+    # Token Authentication validation matching application schema
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(
+            content={"error": "Invalid token"}, 
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
+        
     try:
-        cur.execute(query)
-        results = cur.fetchall()
-        
-        # Structure raw records into a temporary dictionary nested map: {journey: {month: count}}
-        matrix = {}
-        for row in results:
-            journey, month_year, unique_users = row
-            if journey not in matrix:
-                matrix[journey] = {m: 0 for m in months_headers}
-            if month_year in matrix[journey]:
-                matrix[journey][month_year] = unique_users
-
-        # Build output list beginning with the header row
-        chart_data = [["product"] + months_headers]
-        
-        # Populate metric rows matching the nested map data
-        for journey, month_counts in matrix.items():
-            row = [journey] + [month_counts[m] for m in months_headers]
-            chart_data.append(row)
-            
-        return chart_data
-
-    except Exception as e:
-        logger.error(f"Error fetching user adoption chart metrics: {e}")
-        return None
-    finally:
-        cur.close()
-        conn.close()
+        data = get_user_adoption_chart_data()
+        if data is not None:
+            return jsonable_encoder({"status": "success", "data": data})
+        else:
+            return JSONResponse(
+                content={"status": "error", "message": "Failed to extract chart statistics"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    except Exception as error:
+        logger.error(f"Error in user adoption endpoint execution: {error}")
+        return jsonable_encoder({"status": "error", "message": str(error)})
