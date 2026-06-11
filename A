@@ -3,24 +3,25 @@ def get_all_years_adoption_chart_data():
     cur = conn.cursor()
     
     try:
-        # Step 1: Find the range of years present in the database
+        # 1. Find the boundaries of operational years (filtering out rows with NULL timestamps)
         range_query = """
             SELECT 
                 EXTRACT(YEAR FROM MIN(created_at))::INT as start_year,
                 EXTRACT(YEAR FROM MAX(created_at))::INT as end_year
-            FROM public.user_uploaded_document_details;
+            FROM public.user_uploaded_document_details
+            WHERE created_at IS NOT NULL;
         """
         cur.execute(range_query)
         range_res = cur.fetchone()
         
-        # Fallback if the database table is completely empty
+        # Safe fallback if table contains no rows with timestamps
         if not range_res or range_res[0] is None:
             return [["product"]]
 
         start_year, end_year = range_res[0], range_res[1]
         
-        # Step 2: Dynamically generate the month headers from newest to oldest
-        # Format matching: "Dec - 2026", "Nov - 2026", ..., "Jan - 2024"
+        # 2. Dynamically build chronological headers from newest month to oldest month
+        # Structure format matching: "Dec - 2026", "Nov - 2026" ... "Jan - 2024"
         months_headers = []
         months_short = ["Dec", "Nov", "Oct", "Sep", "Aug", "Jul", "Jun", "May", "Apr", "Mar", "Feb", "Jan"]
         
@@ -28,34 +29,43 @@ def get_all_years_adoption_chart_data():
             for m in months_short:
                 months_headers.append(f"{m} - {year}")
 
-        # Step 3: Fetch unique PSID counts grouped by journey and the formatted month-year string
-        # PostgreSQL TO_CHAR(..., 'Mon - YYYY') outputs values like 'Jun - 2026'
+        # 3. Pull user aggregation metrics while filtering out records missing a timestamp
         query = """
             SELECT 
                 COALESCE(mljourney, 'Unknown') as journey,
                 TO_CHAR(created_at, 'Mon - YYYY') as month_year,
                 COUNT(DISTINCT psid) as unique_users
             FROM public.user_uploaded_document_details
+            WHERE created_at IS NOT NULL
             GROUP BY COALESCE(mljourney, 'Unknown'), TO_CHAR(created_at, 'Mon - YYYY');
         """
         cur.execute(query)
         results = cur.fetchall()
         
-        # Step 4: Map the database results into a structural matrix
+        # 4. Initialize structural mapping dictionary
         matrix = {}
         for row in results:
             journey, month_year, unique_users = row
-            # Strip extra whitespace if any from TO_CHAR formatting anomalies
-            month_year_clean = month_year.strip()
+            
+            # Explicit guard: skip processing if database somehow returned a null string representation
+            if month_year is None:
+                continue
+                
+            # Clean string and fix capitalization anomalies to guarantee it hooks cleanly into our Python headers
+            month_year_clean = " ".join(month_year.strip().split()) # Trims interior and exterior spaces
+            # Ensure proper capitalization match (e.g., converting "dec - 2025" to "Dec - 2025" if database locales differ)
+            parts = month_year_clean.split(" - ")
+            if len(parts) == 2:
+                month_year_clean = f"{parts[0].strip().capitalize()} - {parts[1].strip()}"
             
             if journey not in matrix:
-                # Pre-populate all available historical months with 0 active users
+                # Pre-populate complete matrix rows with zeros to handle missing data cleanly
                 matrix[journey] = {m: 0 for m in months_headers}
                 
             if month_year_clean in matrix[journey]:
                 matrix[journey][month_year_clean] = unique_users
 
-        # Step 5: Format out to the frontend matrix array starting with the header row
+        # 5. Compile into the expected array payload layout matrix
         chart_data = [["product"] + months_headers]
         
         for journey, month_counts in matrix.items():
@@ -70,45 +80,3 @@ def get_all_years_adoption_chart_data():
     finally:
         cur.close()
         conn.close()
-
-
-
-
-from util.db_handler import get_all_years_adoption_chart_data
-
-@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
-async def view_user_adoption(DCREST_JWT_TOKEN: str = Header()):
-    """
-    Extract dynamic unique user counts (distinct PSIDs) grouped by journey and calendar month 
-    for all available operational years historical records found inside the database.
-    """
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(
-            content={"error": "Invalid token"}, 
-            status_code=status.HTTP_401_UNAUTHORIZED
-        )
-        
-    try:
-        data = get_all_years_adoption_chart_data()
-        if data is not None:
-            return jsonable_encoder({"status": "success", "data": data})
-        else:
-            return JSONResponse(
-                content={"status": "error", "message": "Failed to extract dynamic chart statistics"},
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    except Exception as error:
-        logger.error(f"Error in dynamic user adoption endpoint execution: {error}")
-        return jsonable_encoder({"status": "error", "message": str(error)})
-
-
-
-{
-  "status": "success",
-  "data": [
-    ["product", "Dec - 2026", "Nov - 2026", "...", "Jan - 2024"],
-    ["HKBBPM", 12, 19, 0, 84],
-    ["CMB-KYC", 45, 32, 0, 51],
-    ["Servicing", 8, 14, 0, 22]
-  ]
-}
