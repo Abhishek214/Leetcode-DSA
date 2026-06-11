@@ -1,312 +1,52 @@
-================================================================================
-PROMPT 2: INTERNET / ELECTRONIC BANKING â€” LIST OF AUTHORISED PERSON EXTRACTION
-================================================================================
+def get_user_adoption_chart_data():
+    conn = getconn()
+    cur = conn.cursor()
+    
+    # Define the 12-month sequence exactly matching the requested chart order
+    months_headers = [
+        "Dec - 2025", "Nov - 2025", "Oct - 2025", "Sep - 2025", 
+        "Aug - 2025", "Jul - 2025", "Jun - 2025", "May - 2025", 
+        "Apr - 2025", "Mar - 2025", "Feb - 2025", "Jan - 2025"
+    ]
+    
+    # Query to fetch unique PSID count grouped by journey and month-year string format
+    query = """
+        SELECT 
+            COALESCE(mljourney, 'Unknown') as journey,
+            TO_CHAR(created_at, 'Mon - YYYY') as month_year,
+            COUNT(DISTINCT psid) as unique_users
+        FROM public.user_uploaded_document_details
+        WHERE created_at >= '2025-01-01 00:00:00' 
+          AND created_at <= '2025-12-31 23:59:59'
+        GROUP BY COALESCE(mljourney, 'Unknown'), TO_CHAR(created_at, 'Mon - YYYY');
+    """
+    
+    try:
+        cur.execute(query)
+        results = cur.fetchall()
+        
+        # Structure raw records into a temporary dictionary nested map: {journey: {month: count}}
+        matrix = {}
+        for row in results:
+            journey, month_year, unique_users = row
+            if journey not in matrix:
+                matrix[journey] = {m: 0 for m in months_headers}
+            if month_year in matrix[journey]:
+                matrix[journey][month_year] = unique_users
 
-OBJECTIVE:
-Extract the complete list of authorized persons/signatories (including account
-numbers) from Board Resolution (BR) and Minutes of Meeting (MoM) documents
-related to internet and electronic banking with 100% accuracy and zero
-hallucination. Output must strictly follow the JSON structure defined at the end
-of this prompt.
+        # Build output list beginning with the header row
+        chart_data = [["product"] + months_headers]
+        
+        # Populate metric rows matching the nested map data
+        for journey, month_counts in matrix.items():
+            row = [journey] + [month_counts[m] for m in months_headers]
+            chart_data.append(row)
+            
+        return chart_data
 
---------------------------------------------------------------------------------
-SECTION 1 â€” CRITICAL INSTRUCTIONS (READ CAREFULLY)
---------------------------------------------------------------------------------
-- ONLY extract information from the Board Resolution or Minutes of Meeting sections
-  (including their Annexes, Schedules, or Cover Letters).
-- NEVER infer, assume, or generate information not explicitly stated in the document.
-- ANTI-HALLUCINATION RULE: NEVER copy text from the examples or instructions within
-  this prompt and present it as extracted data. All extracted text MUST originate
-  exclusively from the physical document.
-- If information is absent or unclear, return 'N/A'. DO NOT create placeholder
-  data or fictional entries.
-
---------------------------------------------------------------------------------
-SECTION 2 â€” PRODUCT TYPE IDENTIFICATION (STRICT ABORT CONDITION)
---------------------------------------------------------------------------------
-Identify the product type by detecting keywords in the actual document text.
-
-For now only one product type is supported:
-  'Internet / Electronic Banking' â€” identified by the literal presence of ANY of
-  the following keywords in the document:
-    - appointed System Administrators, make changes to the online banking profile,
-      subscribe for electronic banking
-    - electronic banking services, internet banking services, electronic banking,
-      electronic platforms
-    - E-banking, HSBCnet, H2H, API's, channels
-
-If these keywords are found, set: 'product_type': 'Internet / Electronic Banking'
-
-CRITICAL ABORT RULE:
-If NONE of these specific keywords are physically present in the document text,
-the document is a general banking document. You MUST NOT extract any persons or
-account numbers. Return EXACTLY:
-  {"Accounts": []}
-and STOP processing immediately.
-
---------------------------------------------------------------------------------
-SECTION 3 â€” PRODUCT CATEGORY IDENTIFICATION (AP ONLY)
---------------------------------------------------------------------------------
-For Internet / Electronic Banking, only the AP (Authorised Person) category is
-applicable.
-
-A person is identified as AP if the document describes them as having general
-authority to represent the customer, open accounts, sign terms, and make mandate
-changes.
-
-Keywords identifying AP powers:
-  - Subscribe for electronic banking channels or platforms
-  - Authorise third parties to manage the Channels
-  - Appoint administrators and manage authorisation levels, delegate authority
-  - Signs contracts, legally possible to resolve again, delegate, acting on behalf,
-    represent, negotiate, draft and sign documents, appoint/revoke, open and manage,
-    close.
-
-Always set: 'product_category': 'AP' for all extracted entries in this prompt.
-
---------------------------------------------------------------------------------
-SECTION 4 â€” ACCOUNT NUMBER EXTRACTION RULES (MAPPED VS UNMAPPED LOGIC)
---------------------------------------------------------------------------------
-
-SCANNING RULE:
-Look for local or general 'Signatory Lists', 'Annexes', 'Schedules', or Cover
-Letters located elsewhere in the document that list the company's account numbers.
-
-Extract specific account numbers that follow standard banking account number
-formats (e.g., 21345060, 21345052, 7891-2345-6789, 808-772438-001).
-Preserve exact formatting â€” dashes and leading zeros must be kept as written.
-
-PRODUCT EXCLUSION RULE:
-Do NOT extract account numbers that are explicitly and exclusively designated for
-non-electronic banking products. Examples of excluded product labels:
-  - 'Payroll'
-  - 'Opex'
-  - 'Cheques'
-  - 'Corporate Cards'
-
-SCENARIO A â€” MAPPED / CORRESPONDING:
-If the document explicitly maps specific lists of authorised persons to particular
-account numbers (e.g., a table where each column is a different account number
-with its own specific signatories), you MUST create a distinct and separate object
-in the 'Accounts' array for EACH individual account number, each with its own
-'List of Authorised Person' array.
-  Example: "Account Number": ["21345060"]
-
-SCENARIO B â€” UNMAPPED / GLOBAL:
-If multiple account numbers are listed (e.g., in a cover letter or header) and a
-single global resolution or signatory list applies to all of them, you MUST group
-all of these account numbers into ONE SINGLE JSON object with one shared
-'List of Authorised Person' array.
-  Example: "Account Number": ["808-772420-001", "808-772420-292", "808-772438-001"]
-
-  - DO NOT create multiple duplicate JSON objects with identical signatory info.
-  - If the document explicitly mentions 'All Accounts' or 'All Bank Accounts'
-    in relation to internet banking, set: 'Account Number': ["All Accounts"]
-  - If no specific account number is mentioned anywhere, OR if the only accounts
-    mentioned fall under the Product Exclusion Rule, set: 'Account Number': ["N/A"]
-
---------------------------------------------------------------------------------
-SECTION 5 â€” LIST OF AUTHORISED PERSON (AP) RULES
---------------------------------------------------------------------------------
-
-CRITICAL INHERITANCE:
-You MUST extract the comprehensive list of personnel from the document's main
-'Signatory List' or Annex. DO NOT limit this list to only the specific individuals
-named in the Electronic Banking section.
-
-PRODUCT EXCLUSION RULE:
-  - Do NOT extract personnel from lists or tables that are explicitly designated
-    for non-electronic banking products (e.g., 'Payroll', 'Opex').
-  - If the only signatory lists available are explicitly for excluded products,
-    return a single entry with 'Name': 'N/A' and all other fields as 'N/A'.
-
-FIELDS TO EXTRACT PER PERSON:
-
-  | Field                  | Description                                        |
-  |------------------------|----------------------------------------------------| 
-  | Name                   | Full human name. EXCLUDE salutations and titles    |
-  |                        | (e.g. remove 'Mr.', 'Mrs.', 'Ms.', 'Dr.',         |
-  |                        | 'Prof.'). CRITICAL: If the document only lists     |
-  |                        | generic roles/titles (e.g., 'Director 1'), set     |
-  |                        | 'Name' to 'N/A' and extract the role into          |
-  |                        | 'Designation'.                                     |
-  |------------------------|----------------------------------------------------| 
-  | Action                 | Normalized action â€” see Action Rules below.        |
-  |------------------------|----------------------------------------------------| 
-  | ID Number              | Government ID if present, otherwise "N/A".         |
-  |------------------------|----------------------------------------------------| 
-  | Designation            | Position/Role/Title (e.g., CFO, Director).         |
-  |                        |                                                    |
-  |                        | CRITICAL OVERRIDE RULE: You MUST first scan the   |
-  |                        | preamble, introductory paragraphs, and meeting     |
-  |                        | headers (e.g., clauses starting with 'THE          |
-  |                        | UNDERSIGNED'). If the document collectively        |
-  |                        | defines the capacity of the individuals in this    |
-  |                        | opening text (e.g., stating they are the           |
-  |                        | 'managing directors of the Company and together    |
-  |                        | constituting the entire board'), you MUST extract  |
-  |                        | this collective definition as the Designation.     |
-  |                        |                                                    |
-  |                        | NEGATIVE CONSTRAINT: Do NOT extract generic titles |
-  |                        | found immediately below signature lines or in      |
-  |                        | isolated table cells (such as 'Director - Legal    |
-  |                        | Representative', 'Authorized Signatory', etc.) if  |
-  |                        | a more descriptive collective title exists in the  |
-  |                        | document's preamble. Only fallback to the text     |
-  |                        | immediately next to/below their name if the        |
-  |                        | preamble completely fails to define their capacity.|
-  |                        |                                                    |
-  |                        | NEVER use structural headings (like 'Officer       |
-  |                        | Signatories' or 'Group A') as a Designation.       |
-  |------------------------|----------------------------------------------------| 
-  | Group                  | Group designation or category (e.g., 'Group A').  |
-  |                        | Extract overarching headings from lists/tables.    |
-  |------------------------|----------------------------------------------------| 
-  | Specific Effective Date| Date in DD-MMM-YYYY format.                        |
-  |                        | See Effective Date Rules in Section 7.             |
-
---------------------------------------------------------------------------------
-SECTION 6 â€” ACTION NORMALIZATION RULES
---------------------------------------------------------------------------------
-Only include a person if an explicit action word is present.
-Normalize as follows:
-
-  "appoint" / "add" / "accede"
-    â†’ 'Add'
-
-  "revoke" / "terminate" / "dismiss" / "withdraw" / "cancel" / "remove" /
-  "removed" / "resign" / "delete"
-    â†’ 'Delete'
-
-  "replace" / "substitute" / "supersede" / "rescind"
-    â†’ 'Replace'
-
-  "amend" / "update" / "rectify" / "modify"
-    â†’ 'Amend'
-
-  If NO action is explicitly stated AND no global override exists â†’ 'N/A'
-
-GLOBAL ACTION INHERITANCE (CONDITIONAL):
-Scan the document for global resolution clauses (e.g., 'the above authorisations
-hereby supersede'). ONLY IF 'supersede', 'replace', or 'rescind' is found globally
-in a whole-document context, set 'Action' to 'Replace' for ALL individuals.
-DO NOT default to 'Replace' if these keywords are missing.
-
-ACTION ORDERING RULE â€” always sort the list in this order:
-  1. All 'Add' actions first
-  2. All 'Delete' actions second
-  3. All 'Replace' actions third
-  4. All 'Amend' actions fourth
-  5. All 'N/A' actions last
-
---------------------------------------------------------------------------------
-SECTION 7 â€” SPECIFIC EFFECTIVE DATE RULES
---------------------------------------------------------------------------------
-- Use the stated effective date, or fallback to the meeting/resolution adoption
-  date found in the main body of the document (e.g., header, preamble, or title).
-- Apply this as the global effective date for ALL persons.
-- CRITICAL INSTRUCTION: Do NOT extract dates from digital signature audit trails,
-  'Final Audit Report' pages, 'Created' dates, or signature histories.
-- If a specific effective date is mentioned for an individual person â†’ populate
-  only for that person; all others receive the global date.
-- Always convert to DD-MMM-YYYY format (e.g., 27-SEP-2025).
-
---------------------------------------------------------------------------------
-SECTION 8 â€” OUTPUT JSON STRUCTURE (GENERALIZED EXAMPLE)
---------------------------------------------------------------------------------
-
-Scenario A â€” Mapped (one object per account, each with its own signatory list):
-{
-  "Accounts": [
-    {
-      "product_type": "Internet / Electronic Banking",
-      "product_category": "AP",
-      "Account Number": ["21345060"],
-      "List of Authorised Person": [
-        {
-          "Name": "<Full name, no titles>",
-          "Action": "<Add / Delete / Replace / Amend / N/A>",
-          "ID Number": "<Government ID or N/A>",
-          "Designation": "<Role/Title from preamble>",
-          "Specific Effective Date": "<DD-MMM-YYYY>",
-          "Group": "<Group A / Group B / N/A>"
-        }
-      ]
-    }
-  ]
-}
-
-Scenario B â€” Unmapped (all accounts share the same signatory list):
-{
-  "Accounts": [
-    {
-      "product_type": "Internet / Electronic Banking",
-      "product_category": "AP",
-      "Account Number": ["808-772420-001", "808-772420-292"],
-      "List of Authorised Person": [
-        {
-          "Name": "<Full name, no titles>",
-          "Action": "<Add / Delete / Replace / Amend / N/A>",
-          "ID Number": "<Government ID or N/A>",
-          "Designation": "<Role/Title from preamble>",
-          "Specific Effective Date": "<DD-MMM-YYYY>",
-          "Group": "<Group A / Group B / N/A>"
-        }
-      ]
-    }
-  ]
-}
-
-NOTE: Delete these examples before submitting. Never reproduce them as extracted data.
-
---------------------------------------------------------------------------------
-SECTION 9 â€” QUALITY ASSURANCE CHECKLIST
---------------------------------------------------------------------------------
-Before submitting output, verify:
-
-1. ANTI-HALLUCINATION CHECK: Are all names and account numbers verbatim from the
-   document? If they look identical to the prompt's examples, delete them.
-2. PRODUCT TYPE CHECK: Were the electronic banking keywords explicitly found?
-   If not, output must be: {"Accounts": []}
-3. ACCOUNT NUMBER CHECK: No account numbers were taken from sections labeled for
-   non-electronic products ('Payroll', 'Opex', 'Cheques', 'Corporate Cards').
-4. MAPPED VS UNMAPPED CHECK: Account numbers sharing the same signatory list MUST
-   be combined into a single object. No duplicate objects were created.
-5. ALL ACCOUNTS CHECK: If the document says 'All Accounts', this is reflected as
-   ["All Accounts"]; if no account is found, ["N/A"].
-6. FULL LIST CHECK: 'List of Authorised Person' contains the full global list from
-   the Annex/Signatory List â€” not just individuals named in the e-banking section.
-7. PRODUCT EXCLUSION CHECK: No signatories were extracted from tables explicitly
-   labeled for non-electronic products like 'Payroll' or 'Opex'.
-8. GROUP CHECK: Structural headers are mapped to the Group field, NOT Designation.
-9. GLOBAL ACTION CHECK: 'Replace' is ONLY applied globally if 'supersede',
-   'replace', or 'rescind' is found in the preamble.
-10. EFFECTIVE DATE CHECK: Document meeting dates were scanned and applied globally.
-    Dates from audit trails or signature histories were NOT used.
-
---------------------------------------------------------------------------------
-SECTION 10 â€” ERROR PREVENTION RULES
---------------------------------------------------------------------------------
-
-NEVER:
-1. Copy text from the prompt's examples and output it as extracted data.
-2. Create separate, identical JSON objects for multiple account numbers unless the
-   document explicitly maps them to different signatory lists.
-3. Put structural headings (like 'Officer Signatory' or 'Group A') into the
-   Designation field.
-4. Include Specimen field in output.
-5. Include salutations and titles (Mr., Mrs., Ms., Dr., etc.) in extracted Names.
-6. Default 'Action' to 'Replace' unless explicit trigger words are in the document.
-7. Invent or infer account numbers not explicitly written in the document.
-
-ALWAYS:
-1. Return {"Accounts": []} if 'electronic banking', 'internet banking', 'channels'
-   etc. are not explicitly found in the document.
-2. Group account numbers into one object if they share the same global signatory
-   list (Scenario B).
-3. Extract exact text as written for names, designations, and groups.
-4. Preserve account number formatting exactly as written (dashes, leading zeros).
-
-================================================================================
-END OF PROMPT 2
-================================================================================
+    except Exception as e:
+        logger.error(f"Error fetching user adoption chart metrics: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
