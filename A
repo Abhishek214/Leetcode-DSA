@@ -1,135 +1,168 @@
-def get_grouped_years_adoption_chart_data(filters: dict):
+def get_comprehensive_user_metrics():
     conn = getconn()
     cur = conn.cursor()
     
-    # White-listed journeys criteria definition
+    # Updated whitelisting array containing all required journeys
     ALLOWED_JOURNEYS = [
-        "CMB-KYC", "Servicing", "WPB-IRR", "SOW", 
-        "SelfService", "HKBBPM", "SMARTSERVE", "SMARTSERVE-UKBBPM"
+        "CMB-KYC", "Servicing", "WPB-IRR", "SOW", "SelfService", 
+        "HKBBPM", "SMARTSERVE", "SMARTSERVE-UKBBPM", "Gen AI", "Traditional"
     ]
-    # Exact 12-month abbreviation sequence from your format layout
+    # Standard 12-month sequence for matrix columns
     MONTHS_SHORT = ["Dec", "Nov", "Oct", "Sep", "Aug", "Jul", "Jun", "May", "Apr", "Mar", "Feb", "Jan"]
-    
-    # Build case-insensitive canonical lookup dictionary map
     journey_upper_map = {j.upper(): j for j in ALLOWED_JOURNEYS}
     
+    # Root response structure
+    payload = {
+        "User_adoption": {},
+        "User_by_journey": {},
+        "User_by_Feature": {},
+        "User_by_market": {}
+    }
+    
     try:
-        # Replicating sequential dynamic query filter building pattern
-        where_clause = " WHERE created_at IS NOT NULL"
-        params = []
-        
-        if filters.get("start_time") is not None:
-            where_clause += " AND start_time >= %s"
-            params.append(filters["start_time"])
-            
-        if filters.get("end_time") is not None:
-            where_clause += " AND end_time <= %s"
-            params.append(filters["end_time"])
-            
-        if filters.get("journey") is not None:
-            where_clause += " AND UPPER(mljourney) = UPPER(%s)"
-            params.append(filters["journey"])
-            
-        if filters.get("market") is not None:
-            where_clause += " AND market = %s"
-            params.append(filters["market"])
-            
-        if filters.get("feature") is not None:
-            where_clause += " AND feature = %s"
-            params.append(filters["feature"])
-            
-        if filters.get("doctype") is not None:
-            where_clause += " AND doctype_code = %s"
-            params.append(filters["doctype"])
-
-        # FIX FOR ISSUE 2: Determine which journeys should be visible in the output matrix
-        filter_journey = filters.get("journey")
-        if filter_journey:
-            visible_journeys = [j for j in ALLOWED_JOURNEYS if j.upper() == filter_journey.strip().upper()]
-        else:
-            visible_journeys = ALLOWED_JOURNEYS
-
-        # Step 1: Detect bounding years available within database under current filters
-        range_query = f"""
+        # Step 1: Query global timeline boundaries (No filters)
+        range_query = """
             SELECT 
                 EXTRACT(YEAR FROM MIN(created_at))::INT as start_year,
                 EXTRACT(YEAR FROM MAX(created_at))::INT as end_year
             FROM public.user_uploaded_document_details
-            {where_clause};
+            WHERE created_at IS NOT NULL;
         """
-        cur.execute(range_query, tuple(params))
+        cur.execute(range_query)
         range_res = cur.fetchone()
-        
-        # Initialize final mapping container structures
-        structured_map = {}
         
         if range_res and range_res[0] is not None:
             start_year, end_year = range_res[0], range_res[1]
             for y in range(start_year, end_year + 1):
-                structured_map[str(y)] = {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS}
+                payload["User_adoption"][str(y)] = {}
         else:
             from datetime import datetime
             current_y = str(datetime.now().year)
-            structured_map[current_y] = {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS}
+            payload["User_adoption"][current_y] = {}
+            start_year = end_year = datetime.now().year
 
-        # Step 2: Fetch unique distinct counts grouped by Year, Short-Month, and Journey
-        query = f"""
+        # Step 2: Initialize clean staging matrix tracking map using pure month names
+        # Structure: { year: { journey: { short_month: count } } }
+        adoption_staging = {
+            str(y): {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS} 
+            for y in range(start_year, end_year + 1)
+        }
+        active_data_years = set()
+
+        # TO_CHAR(..., 'Mon') returns 'Dec', 'Nov', etc.
+        adoption_query = """
             SELECT 
                 EXTRACT(YEAR FROM created_at)::INT as c_year,
                 TO_CHAR(created_at, 'Mon') as c_month,
                 COALESCE(mljourney, 'Unknown') as journey,
                 COUNT(DISTINCT psid) as unique_users
             FROM public.user_uploaded_document_details
-            {where_clause}
+            WHERE created_at IS NOT NULL
             GROUP BY EXTRACT(YEAR FROM created_at)::INT, TO_CHAR(created_at, 'Mon'), COALESCE(mljourney, 'Unknown');
         """
-        cur.execute(query, tuple(params))
+        cur.execute(adoption_query)
         results = cur.fetchall()
         
-        # Step 3: Populate database metrics into our structured year maps
         for row in results:
             c_year, c_month, db_journey, unique_users = row
-            
             if c_year is None or c_month is None or db_journey is None:
                 continue
                 
             year_str = str(c_year)
-            month_clean = c_month.strip().capitalize()
-            norm_journey_key = db_journey.strip().upper()
-            
-            if norm_journey_key not in journey_upper_map:
+            norm_journey = db_journey.strip().upper()
+            if norm_journey not in journey_upper_map:
                 continue
-            canonical_journey = journey_upper_map[norm_journey_key]
+            canonical_journey = journey_upper_map[norm_journey]
             
-            if year_str in structured_map and month_clean in structured_map[year_str][canonical_journey]:
-                structured_map[year_str][canonical_journey][month_clean] += unique_users
-
-        # Step 4: Compile matrices and drop empty years / unrequested journeys
-        final_chart_json = {}
-        for year_key in sorted(structured_map.keys()):
-            year_matrix = [["product"] + MONTHS_SHORT]
-            has_data = False  # Track if this entire year has any non-zero data
-            
-            # Loop only over the visible journeys (Fixes Issue 2)
-            for j in visible_journeys:
-                row_values = [structured_map[year_key][j][m] for m in MONTHS_SHORT]
+            # Normalize casing to match standard keys (e.g., "dec" -> "Dec")
+            month_clean = c_month.strip().capitalize()
                 
-                # If any month contains actual data, mark this year as active
-                if any(val > 0 for val in row_values):
-                    has_data = True
-                    
-                row = [j] + row_values
-                year_matrix.append(row)
-            
-            # FIX FOR ISSUE 1: Only add the year to the final object if it contains data
-            if has_data:
-                final_chart_json[year_key] = year_matrix
-            
-        return final_chart_json
+            if year_str in adoption_staging and canonical_journey in adoption_staging[year_str]:
+                if month_clean in adoption_staging[year_str][canonical_journey]:
+                    adoption_staging[year_str][canonical_journey][month_clean] += unique_users
+                    if unique_users > 0:
+                        active_data_years.add(year_str)
+
+        # Build clean matrices. Empty years receive an empty dictionary object '{}'
+        for year_key in sorted(adoption_staging.keys()):
+            if year_key in active_data_years:
+                # Header row now uses month abbreviations directly (e.g., ["product", "Dec", "Nov", ...])
+                year_matrix = [["product"] + MONTHS_SHORT]
+                for j in ALLOWED_JOURNEYS:
+                    row = [j] + [adoption_staging[year_key][j][m] for m in MONTHS_SHORT]
+                    year_matrix.append(row)
+                payload["User_adoption"][year_key] = year_matrix
+            else:
+                payload["User_adoption"][year_key] = {}
+
+        # Step 3: Populate global distinct "User_by_journey" distribution map
+        journey_query = """
+            SELECT COALESCE(mljourney, 'Unknown') as journey, COUNT(DISTINCT psid) as count
+            FROM public.user_uploaded_document_details
+            WHERE created_at IS NOT NULL
+            GROUP BY COALESCE(mljourney, 'Unknown');
+        """
+        cur.execute(journey_query)
+        for row in cur.fetchall():
+            payload["User_by_journey"][row[0]] = row[1]
+
+        # Step 4: Populate global distinct "User_by_Feature" distribution map
+        feature_query = """
+            SELECT COALESCE(feature, 'Unknown') as feature, COUNT(DISTINCT psid) as count
+            FROM public.user_uploaded_document_details
+            WHERE created_at IS NOT NULL
+            GROUP BY COALESCE(feature, 'Unknown');
+        """
+        cur.execute(feature_query)
+        for row in cur.fetchall():
+            payload["User_by_Feature"][row[0]] = row[1]
+
+        # Step 5: Populate global distinct "User_by_market" distribution map
+        market_query = """
+            SELECT COALESCE(market, 'Unknown') as market, COUNT(DISTINCT psid) as count
+            FROM public.user_uploaded_document_details
+            WHERE created_at IS NOT NULL
+            GROUP BY COALESCE(market, 'Unknown');
+        """
+        cur.execute(market_query)
+        for row in cur.fetchall():
+            payload["User_by_market"][row[0]] = row[1]
+
+        return payload
 
     except Exception as e:
-        logger.error(f"Error compiling grouped multi-year chart layout: {e}")
+        logger.error(f"Error compiling clean global multi-matrix analysis payload: {e}")
         return None
     finally:
         cur.close()
         conn.close()
+
+
+
+
+from util.db_handler import get_comprehensive_user_metrics
+
+@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
+async def view_user_adoption(DCREST_JWT_TOKEN: str = Header()):
+    """
+    Extract unconditional comprehensive analytics detailing total system adoption matrix grids, 
+    unique user distributions parsed per active operational journey, feature sets, and target markets.
+    """
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(
+            content={"error": "Invalid token"}, 
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
+        
+    try:
+        data = get_comprehensive_user_metrics()
+        if data is not None:
+            return jsonable_encoder({"status": "success", "data": data})
+        else:
+            return JSONResponse(
+                content={"status": "error", "message": "Failed to compile global user metrics payload"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    except Exception as error:
+        logger.error(f"Error executing global tracking user adoption metrics: {error}")
+        return jsonable_encoder({"status": "error", "message": str(error)})
