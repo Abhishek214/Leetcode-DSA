@@ -1,81 +1,118 @@
-def get_all_years_adoption_chart_data():
+def get_filtered_adoption_chart_data(filters: dict):
     conn = getconn()
     cur = conn.cursor()
     
+    # White-listed journeys criteria definition
+    ALLOWED_JOURNEYS = [
+        "CMB-KYC", "Servicing", "WPB-IRR", "SOW", 
+        "SelfService", "HKBBPM", "SMARTSERVE", "SMARTSERVE-UKBBPM"
+    ]
+    # Build case-insensitive canonical lookup dictionary map
+    journey_upper_map = {j.upper(): j for j in ALLOWED_JOURNEYS}
+    
     try:
-        # 1. Find the boundaries of operational years (filtering out rows with NULL timestamps)
-        range_query = """
+        # Replicating the sequential dynamic parameter query binding style of get_user_stats
+        where_clause = " WHERE created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("start_time") is not None:
+            where_clause += " AND start_time >= %s"
+            params.append(filters["start_time"])
+            
+        if filters.get("end_time") is not None:
+            where_clause += " AND end_time <= %s"
+            params.append(filters["end_time"])
+            
+        if filters.get("journey") is not None:
+            where_clause += " AND UPPER(mljourney) = UPPER(%s)"
+            params.append(filters["journey"])
+            
+        if filters.get("market") is not None:
+            where_clause += " AND market = %s"
+            params.append(filters["market"])
+            
+        if filters.get("feature") is not None:
+            where_clause += " AND feature = %s"
+            params.append(filters["feature"])
+            
+        if filters.get("doctype") is not None:
+            where_clause += " AND doctype_code = %s"
+            params.append(filters["doctype"])
+
+        # Step 1: Query operational timeline boundaries under current criteria filters
+        range_query = f"""
             SELECT 
                 EXTRACT(YEAR FROM MIN(created_at))::INT as start_year,
                 EXTRACT(YEAR FROM MAX(created_at))::INT as end_year
             FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL;
+            {where_clause};
         """
-        cur.execute(range_query)
+        cur.execute(range_query, tuple(params))
         range_res = cur.fetchone()
         
-        # Safe fallback if table contains no rows with timestamps
-        if not range_res or range_res[0] is None:
-            return [["product"]]
-
-        start_year, end_year = range_res[0], range_res[1]
-        
-        # 2. Dynamically build chronological headers from newest month to oldest month
-        # Structure format matching: "Dec - 2026", "Nov - 2026" ... "Jan - 2024"
+        # Build month headers descending chronologically
         months_headers = []
         months_short = ["Dec", "Nov", "Oct", "Sep", "Aug", "Jul", "Jun", "May", "Apr", "Mar", "Feb", "Jan"]
         
-        for year in range(end_year, start_year - 1, -1):
-            for m in months_short:
-                months_headers.append(f"{m} - {year}")
+        if range_res and range_res[0] is not None:
+            start_year, end_year = range_res[0], range_res[1]
+            for year in range(end_year, start_year - 1, -1):
+                for m in months_short:
+                    months_headers.append(f"{m} - {year}")
+        else:
+            # Safe absolute default to current year if no matches exist
+            from datetime import datetime
+            months_headers = [f"{m} - {datetime.now().year}" for m in months_short]
 
-        # 3. Pull user aggregation metrics while filtering out records missing a timestamp
-        query = """
+        # Step 2: Fetch unique user analytics data sets matching constraints
+        query = f"""
             SELECT 
                 COALESCE(mljourney, 'Unknown') as journey,
                 TO_CHAR(created_at, 'Mon - YYYY') as month_year,
                 COUNT(DISTINCT psid) as unique_users
             FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL
+            {where_clause}
             GROUP BY COALESCE(mljourney, 'Unknown'), TO_CHAR(created_at, 'Mon - YYYY');
         """
-        cur.execute(query)
+        cur.execute(query, tuple(params))
         results = cur.fetchall()
         
-        # 4. Initialize structural mapping dictionary
-        matrix = {}
+        # Initialize final response structure matching designated whitelisted entries only
+        matrix = {j: {m: 0 for m in months_headers} for j in ALLOWED_JOURNEYS}
+        
         for row in results:
-            journey, month_year, unique_users = row
+            db_journey, month_year, unique_users = row
             
-            # Explicit guard: skip processing if database somehow returned a null string representation
-            if month_year is None:
+            if month_year is None or db_journey is None:
                 continue
                 
-            # Clean string and fix capitalization anomalies to guarantee it hooks cleanly into our Python headers
-            month_year_clean = " ".join(month_year.strip().split()) # Trims interior and exterior spaces
-            # Ensure proper capitalization match (e.g., converting "dec - 2025" to "Dec - 2025" if database locales differ)
+            # Perform case-insensitive structural matching comparison
+            norm_journey_key = db_journey.strip().upper()
+            if norm_journey_key not in journey_upper_map:
+                continue  # Discard data items not registered on target whitelist
+                
+            canonical_journey = journey_upper_map[norm_journey_key]
+            
+            # Re-verify and clean string-spaces representation uniformity
+            month_year_clean = " ".join(month_year.strip().split())
             parts = month_year_clean.split(" - ")
             if len(parts) == 2:
                 month_year_clean = f"{parts[0].strip().capitalize()} - {parts[1].strip()}"
             
-            if journey not in matrix:
-                # Pre-populate complete matrix rows with zeros to handle missing data cleanly
-                matrix[journey] = {m: 0 for m in months_headers}
-                
-            if month_year_clean in matrix[journey]:
-                matrix[journey][month_year_clean] = unique_users
+            if month_year_clean in matrix[canonical_journey]:
+                # Combine duplicates across mixed case entries (e.g., SERVICING + Servicing)
+                matrix[canonical_journey][month_year_clean] += unique_users
 
-        # 5. Compile into the expected array payload layout matrix
+        # Step 3: Format payload array layout directly matching the frontend requirements
         chart_data = [["product"] + months_headers]
-        
-        for journey, month_counts in matrix.items():
-            row = [journey] + [month_counts[m] for m in months_headers]
+        for j in ALLOWED_JOURNEYS:
+            row = [j] + [matrix[j][m] for m in months_headers]
             chart_data.append(row)
             
         return chart_data
 
     except Exception as e:
-        logger.error(f"Error executing dynamic multi-year user adoption aggregation: {e}")
+        logger.error(f"Error executing filtered user adoption data evaluation: {e}")
         return None
     finally:
         cur.close()
