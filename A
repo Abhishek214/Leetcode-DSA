@@ -2,7 +2,7 @@ def get_comprehensive_user_metrics():
     conn = getconn()
     cur = conn.cursor()
     
-    # Updated whitelisting array containing all required journeys
+    # Whitelisting array containing all required journeys
     ALLOWED_JOURNEYS = [
         "CMB-KYC", "Servicing", "WPB-IRR", "SOW", "SelfService", 
         "HKBBPM", "SMARTSERVE", "SMARTSERVE-UKBBPM", "Gen AI", "Traditional"
@@ -42,14 +42,12 @@ def get_comprehensive_user_metrics():
             start_year = end_year = datetime.now().year
 
         # Step 2: Initialize clean staging matrix tracking map using pure month names
-        # Structure: { year: { journey: { short_month: count } } }
         adoption_staging = {
             str(y): {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS} 
             for y in range(start_year, end_year + 1)
         }
         active_data_years = set()
 
-        # TO_CHAR(..., 'Mon') returns 'Dec', 'Nov', etc.
         adoption_query = """
             SELECT 
                 EXTRACT(YEAR FROM created_at)::INT as c_year,
@@ -74,7 +72,6 @@ def get_comprehensive_user_metrics():
                 continue
             canonical_journey = journey_upper_map[norm_journey]
             
-            # Normalize casing to match standard keys (e.g., "dec" -> "Dec")
             month_clean = c_month.strip().capitalize()
                 
             if year_str in adoption_staging and canonical_journey in adoption_staging[year_str]:
@@ -83,10 +80,9 @@ def get_comprehensive_user_metrics():
                     if unique_users > 0:
                         active_data_years.add(year_str)
 
-        # Build clean matrices. Empty years receive an empty dictionary object '{}'
+        # Build clean matrices
         for year_key in sorted(adoption_staging.keys()):
             if year_key in active_data_years:
-                # Header row now uses month abbreviations directly (e.g., ["product", "Dec", "Nov", ...])
                 year_matrix = [["product"] + MONTHS_SHORT]
                 for j in ALLOWED_JOURNEYS:
                     row = [j] + [adoption_staging[year_key][j][m] for m in MONTHS_SHORT]
@@ -117,11 +113,11 @@ def get_comprehensive_user_metrics():
         for row in cur.fetchall():
             payload["User_by_Feature"][row[0]] = row[1]
 
-        # Step 5: Populate global distinct "User_by_market" distribution map
+        # STEP 5 FIX: Query market and distinct user counts from the correct "table_warden" table
         market_query = """
             SELECT COALESCE(market, 'Unknown') as market, COUNT(DISTINCT psid) as count
-            FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL
+            FROM public.table_warden
+            WHERE date IS NOT NULL
             GROUP BY COALESCE(market, 'Unknown');
         """
         cur.execute(market_query)
@@ -136,33 +132,3 @@ def get_comprehensive_user_metrics():
     finally:
         cur.close()
         conn.close()
-
-
-
-
-from util.db_handler import get_comprehensive_user_metrics
-
-@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
-async def view_user_adoption(DCREST_JWT_TOKEN: str = Header()):
-    """
-    Extract unconditional comprehensive analytics detailing total system adoption matrix grids, 
-    unique user distributions parsed per active operational journey, feature sets, and target markets.
-    """
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(
-            content={"error": "Invalid token"}, 
-            status_code=status.HTTP_401_UNAUTHORIZED
-        )
-        
-    try:
-        data = get_comprehensive_user_metrics()
-        if data is not None:
-            return jsonable_encoder({"status": "success", "data": data})
-        else:
-            return JSONResponse(
-                content={"status": "error", "message": "Failed to compile global user metrics payload"},
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-    except Exception as error:
-        logger.error(f"Error executing global tracking user adoption metrics: {error}")
-        return jsonable_encoder({"status": "error", "message": str(error)})
