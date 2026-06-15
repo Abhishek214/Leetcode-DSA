@@ -42,6 +42,13 @@ def get_grouped_years_adoption_chart_data(filters: dict):
             where_clause += " AND doctype_code = %s"
             params.append(filters["doctype"])
 
+        # FIX FOR ISSUE 2: Determine which journeys should be visible in the output matrix
+        filter_journey = filters.get("journey")
+        if filter_journey:
+            visible_journeys = [j for j in ALLOWED_JOURNEYS if j.upper() == filter_journey.strip().upper()]
+        else:
+            visible_journeys = ALLOWED_JOURNEYS
+
         # Step 1: Detect bounding years available within database under current filters
         range_query = f"""
             SELECT 
@@ -58,11 +65,9 @@ def get_grouped_years_adoption_chart_data(filters: dict):
         
         if range_res and range_res[0] is not None:
             start_year, end_year = range_res[0], range_res[1]
-            # Initialize each detected year with zeroed out rows for all allowed journeys
             for y in range(start_year, end_year + 1):
                 structured_map[str(y)] = {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS}
         else:
-            # Absolute fallback to current calendar year if database returns no records
             from datetime import datetime
             current_y = str(datetime.now().year)
             structured_map[current_y] = {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS}
@@ -89,26 +94,36 @@ def get_grouped_years_adoption_chart_data(filters: dict):
                 continue
                 
             year_str = str(c_year)
-            month_clean = c_month.strip().capitalize()  # Normalize case to match "Dec", "Nov", etc.
+            month_clean = c_month.strip().capitalize()
             norm_journey_key = db_journey.strip().upper()
             
-            # Check whitelist matching conditions
             if norm_journey_key not in journey_upper_map:
                 continue
             canonical_journey = journey_upper_map[norm_journey_key]
             
             if year_str in structured_map and month_clean in structured_map[year_str][canonical_journey]:
-                # Merge user metrics across identically named mixed-case duplicate entries
                 structured_map[year_str][canonical_journey][month_clean] += unique_users
 
-        # Step 4: Compile internal data maps into sorted output matrices grouped by year keys
+        # Step 4: Compile matrices and drop empty years / unrequested journeys
         final_chart_json = {}
         for year_key in sorted(structured_map.keys()):
             year_matrix = [["product"] + MONTHS_SHORT]
-            for j in ALLOWED_JOURNEYS:
-                row = [j] + [structured_map[year_key][j][m] for m in MONTHS_SHORT]
+            has_data = False  # Track if this entire year has any non-zero data
+            
+            # Loop only over the visible journeys (Fixes Issue 2)
+            for j in visible_journeys:
+                row_values = [structured_map[year_key][j][m] for m in MONTHS_SHORT]
+                
+                # If any month contains actual data, mark this year as active
+                if any(val > 0 for val in row_values):
+                    has_data = True
+                    
+                row = [j] + row_values
                 year_matrix.append(row)
-            final_chart_json[year_key] = year_matrix
+            
+            # FIX FOR ISSUE 1: Only add the year to the final object if it contains data
+            if has_data:
+                final_chart_json[year_key] = year_matrix
             
         return final_chart_json
 
