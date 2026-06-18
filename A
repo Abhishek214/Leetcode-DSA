@@ -1,134 +1,289 @@
-def get_comprehensive_user_metrics():
+def get_user_adoption_by_year(year: str):
+    """
+    Fetches user adoption matrix strictly filtered by a target calendar year.
+    """
     conn = getconn()
     cur = conn.cursor()
     
-    # Whitelisting array containing all required journeys
     ALLOWED_JOURNEYS = [
         "CMB-KYC", "Servicing", "WPB-IRR", "SOW", "SelfService", 
         "HKBBPM", "SMARTSERVE", "SMARTSERVE-UKBBPM", "Gen AI", "Traditional"
     ]
-    # Standard 12-month sequence for matrix columns
     MONTHS_SHORT = ["Dec", "Nov", "Oct", "Sep", "Aug", "Jul", "Jun", "May", "Apr", "Mar", "Feb", "Jan"]
     journey_upper_map = {j.upper(): j for j in ALLOWED_JOURNEYS}
     
-    # Root response structure
-    payload = {
-        "User_adoption": {},
-        "User_by_journey": {},
-        "User_by_Feature": {},
-        "User_by_market": {}
-    }
-    
     try:
-        # Step 1: Query global timeline boundaries (No filters)
-        range_query = """
-            SELECT 
-                EXTRACT(YEAR FROM MIN(created_at))::INT as start_year,
-                EXTRACT(YEAR FROM MAX(created_at))::INT as end_year
-            FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL;
-        """
-        cur.execute(range_query)
-        range_res = cur.fetchone()
+        adoption_staging = {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS}
         
-        if range_res and range_res[0] is not None:
-            start_year, end_year = range_res[0], range_res[1]
-            for y in range(start_year, end_year + 1):
-                payload["User_adoption"][str(y)] = {}
-        else:
-            from datetime import datetime
-            current_y = str(datetime.now().year)
-            payload["User_adoption"][current_y] = {}
-            start_year = end_year = datetime.now().year
-
-        # Step 2: Initialize clean staging matrix tracking map using pure month names
-        adoption_staging = {
-            str(y): {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS} 
-            for y in range(start_year, end_year + 1)
-        }
-        active_data_years = set()
-
-        adoption_query = """
+        query = """
             SELECT 
-                EXTRACT(YEAR FROM created_at)::INT as c_year,
                 TO_CHAR(created_at, 'Mon') as c_month,
                 COALESCE(mljourney, 'Unknown') as journey,
                 COUNT(DISTINCT psid) as unique_users
             FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL
-            GROUP BY EXTRACT(YEAR FROM created_at)::INT, TO_CHAR(created_at, 'Mon'), COALESCE(mljourney, 'Unknown');
+            WHERE created_at IS NOT NULL AND EXTRACT(YEAR FROM created_at)::INT = %s
+            GROUP BY TO_CHAR(created_at, 'Mon'), COALESCE(mljourney, 'Unknown');
         """
-        cur.execute(adoption_query)
+        cur.execute(query, (int(year),))
         results = cur.fetchall()
         
         for row in results:
-            c_year, c_month, db_journey, unique_users = row
-            if c_year is None or c_month is None or db_journey is None:
-                continue
-                
-            year_str = str(c_year)
+            c_month, db_journey, unique_users = row
             norm_journey = db_journey.strip().upper()
             if norm_journey not in journey_upper_map:
                 continue
             canonical_journey = journey_upper_map[norm_journey]
-            
             month_clean = c_month.strip().capitalize()
-                
-            if year_str in adoption_staging and canonical_journey in adoption_staging[year_str]:
-                if month_clean in adoption_staging[year_str][canonical_journey]:
-                    adoption_staging[year_str][canonical_journey][month_clean] += unique_users
-                    if unique_users > 0:
-                        active_data_years.add(year_str)
-
-        # Build clean matrices
-        for year_key in sorted(adoption_staging.keys()):
-            if year_key in active_data_years:
-                year_matrix = [["product"] + MONTHS_SHORT]
-                for j in ALLOWED_JOURNEYS:
-                    row = [j] + [adoption_staging[year_key][j][m] for m in MONTHS_SHORT]
-                    year_matrix.append(row)
-                payload["User_adoption"][year_key] = year_matrix
-            else:
-                payload["User_adoption"][year_key] = {}
-
-        # Step 3: Populate global distinct "User_by_journey" distribution map
-        journey_query = """
-            SELECT COALESCE(mljourney, 'Unknown') as journey, COUNT(DISTINCT psid) as count
-            FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL
-            GROUP BY COALESCE(mljourney, 'Unknown');
-        """
-        cur.execute(journey_query)
-        for row in cur.fetchall():
-            payload["User_by_journey"][row[0]] = row[1]
-
-        # Step 4: Populate global distinct "User_by_Feature" distribution map
-        feature_query = """
-            SELECT COALESCE(feature, 'Unknown') as feature, COUNT(DISTINCT psid) as count
-            FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL
-            GROUP BY COALESCE(feature, 'Unknown');
-        """
-        cur.execute(feature_query)
-        for row in cur.fetchall():
-            payload["User_by_Feature"][row[0]] = row[1]
-
-        # STEP 5 FIX: Query market and distinct user counts from the correct "table_warden" table
-        market_query = """
-            SELECT COALESCE(market, 'Unknown') as market, COUNT(DISTINCT psid) as count
-            FROM public.table_warden
-            WHERE date IS NOT NULL
-            GROUP BY COALESCE(market, 'Unknown');
-        """
-        cur.execute(market_query)
-        for row in cur.fetchall():
-            payload["User_by_market"][row[0]] = row[1]
-
-        return payload
-
+            
+            if month_clean in adoption_staging[canonical_journey]:
+                adoption_staging[canonical_journey][month_clean] += unique_users
+        
+        year_matrix = [["product"] + MONTHS_SHORT]
+        for j in ALLOWED_JOURNEYS:
+            row = [j] + [adoption_staging[j][m] for m in MONTHS_SHORT]
+            year_matrix.append(row)
+            
+        return {year: year_matrix}
     except Exception as e:
-        logger.error(f"Error compiling clean global multi-matrix analysis payload: {e}")
+        logger.error(f"Error compiling filtered single year user adoption: {e}")
         return None
     finally:
         cur.close()
         conn.close()
+
+
+def get_user_by_journey_data(filters: dict):
+    """
+    Fetches unique user counts grouped by operational journeys with full filters.
+    """
+    conn = getconn()
+    cur = conn.cursor()
+    try:
+        where_clause = " WHERE d.created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("start_time"):
+            where_clause += " AND d.start_time >= %s"
+            params.append(filters["start_time"])
+        if filters.get("end_time"):
+            where_clause += " AND d.end_time <= %s"
+            params.append(filters["end_time"])
+        if filters.get("journey"):
+            where_clause += " AND UPPER(d.mljourney) = UPPER(%s)"
+            params.append(filters["journey"])
+        if filters.get("market"):
+            where_clause += " AND w.market = %s"
+            params.append(filters["market"])
+        if filters.get("feature"):
+            where_clause += " AND d.feature = %s"
+            params.append(filters["feature"])
+        if filters.get("doctype"):
+            where_clause += " AND d.doctype_code = %s"
+            params.append(filters["doctype"])
+
+        query = f"""
+            SELECT COALESCE(d.mljourney, 'Unknown') as journey, COUNT(DISTINCT d.psid) as count
+            FROM public.user_uploaded_document_details d
+            LEFT JOIN public.table_warden w ON d.psid = w.psid
+            {where_clause}
+            GROUP BY COALESCE(d.mljourney, 'Unknown');
+        """
+        cur.execute(query, tuple(params))
+        return {row[0]: row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"Error fetching user_by_journey data: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_by_feature_data(filters: dict):
+    """
+    Fetches unique user counts grouped by product feature with full filters.
+    """
+    conn = getconn()
+    cur = conn.cursor()
+    try:
+        where_clause = " WHERE d.created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("start_time"):
+            where_clause += " AND d.start_time >= %s"
+            params.append(filters["start_time"])
+        if filters.get("end_time"):
+            where_clause += " AND d.end_time <= %s"
+            params.append(filters["end_time"])
+        if filters.get("journey"):
+            where_clause += " AND UPPER(d.mljourney) = UPPER(%s)"
+            params.append(filters["journey"])
+        if filters.get("market"):
+            where_clause += " AND w.market = %s"
+            params.append(filters["market"])
+        if filters.get("feature"):
+            where_clause += " AND d.feature = %s"
+            params.append(filters["feature"])
+        if filters.get("doctype"):
+            where_clause += " AND d.doctype_code = %s"
+            params.append(filters["doctype"])
+
+        query = f"""
+            SELECT COALESCE(d.feature, 'Unknown') as feature, COUNT(DISTINCT d.psid) as count
+            FROM public.user_uploaded_document_details d
+            LEFT JOIN public.table_warden w ON d.psid = w.psid
+            {where_clause}
+            GROUP BY COALESCE(d.feature, 'Unknown');
+        """
+        cur.execute(query, tuple(params))
+        return {row[0]: row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"Error fetching user_by_feature data: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_by_market_data(filters: dict):
+    """
+    Fetches unique user counts grouped by regional market with full filters.
+    """
+    conn = getconn()
+    cur = conn.cursor()
+    try:
+        where_clause = " WHERE w.date IS NOT NULL"
+        params = []
+        
+        if filters.get("start_time"):
+            where_clause += " AND w.date >= %s"
+            params.append(filters["start_time"])
+        if filters.get("end_time"):
+            where_clause += " AND w.date <= %s"
+            params.append(filters["end_time"])
+        if filters.get("journey"):
+            where_clause += " AND UPPER(d.mljourney) = UPPER(%s)"
+            params.append(filters["journey"])
+        if filters.get("market"):
+            where_clause += " AND w.market = %s"
+            params.append(filters["market"])
+        if filters.get("feature"):
+            where_clause += " AND d.feature = %s"
+            params.append(filters["feature"])
+        if filters.get("doctype"):
+            where_clause += " AND d.doctype_code = %s"
+            params.append(filters["doctype"])
+
+        query = f"""
+            SELECT COALESCE(w.market, 'Unknown') as market, COUNT(DISTINCT w.psid) as count
+            FROM public.table_warden w
+            LEFT JOIN public.user_uploaded_document_details d ON w.psid = d.psid
+            {where_clause}
+            GROUP BY COALESCE(w.market, 'Unknown');
+        """
+        cur.execute(query, tuple(params))
+        return {row[0]: row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"Error fetching user_by_market data: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+
+
+from fastapi import Header, Query, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from typing import Optional
+from util.db_handler import (
+    get_user_adoption_by_year,
+    get_user_by_journey_data,
+    get_user_by_feature_data,
+    get_user_by_market_data
+)
+
+# -------------------------------------------------------------
+# 1. USER ADOPTION ENDPOINT (Only accepts year parameter)
+# -------------------------------------------------------------
+@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
+async def view_user_adoption(
+    year: str = Query(..., description="Target year calculation constraint filter"),
+    DCREST_JWT_TOKEN: str = Header()
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    data = get_user_adoption_by_year(year)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"User_adoption": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile user adoption data"}, status_code=500)
+
+
+# -------------------------------------------------------------
+# 2. USER BY JOURNEY ENDPOINT (With all filters restored)
+# -------------------------------------------------------------
+@UserstatsServer.get("/user_by_journey", status_code=status.HTTP_200_OK)
+async def view_user_by_journey(
+    DCREST_JWT_TOKEN: str = Header(),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    journey: Optional[str] = Query(None),
+    market: Optional[str] = Query(None),
+    feature: Optional[str] = Query(None),
+    doctype: Optional[str] = Query(None)
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
+    data = get_user_by_journey_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"User_by_journey": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile journey analytics"}, status_code=500)
+
+
+# -------------------------------------------------------------
+# 3. USER BY FEATURE ENDPOINT (With all filters restored)
+# -------------------------------------------------------------
+@UserstatsServer.get("/user_by_feature", status_code=status.HTTP_200_OK)
+async def view_user_by_feature(
+    DCREST_JWT_TOKEN: str = Header(),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    journey: Optional[str] = Query(None),
+    market: Optional[str] = Query(None),
+    feature: Optional[str] = Query(None),
+    doctype: Optional[str] = Query(None)
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
+    data = get_user_by_feature_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"User_by_Feature": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile feature analytics"}, status_code=500)
+
+
+# -------------------------------------------------------------
+# 4. USER BY MARKET ENDPOINT (With all filters restored)
+# -------------------------------------------------------------
+@UserstatsServer.get("/user_by_market", status_code=status.HTTP_200_OK)
+async def view_user_by_market(
+    DCREST_JWT_TOKEN: str = Header(),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    journey: Optional[str] = Query(None),
+    market: Optional[str] = Query(None),
+    feature: Optional[str] = Query(None),
+    doctype: Optional[str] = Query(None)
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
+    data = get_user_by_market_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"User_by_market": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile market analytics"}, status_code=500)
