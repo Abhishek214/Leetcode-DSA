@@ -1,21 +1,29 @@
-def get_paginated_summary(page: int, records_per_page: int):
+def get_summary_report(report_type: str, start_time: Optional[str], end_time: Optional[str], page: Optional[int] = None, records_per_page: Optional[int] = None):
     """
-    Fetches a specific page slice of summary records from the document details table.
+    Fetches the summary report stats matching the original get_user_stats code structure.
+    Pagination parameters are dynamically applied only when report_type is 'detailed_view'.
     """
     conn = getconn()
     cur = conn.cursor()
     
-    # Calculate offset
-    offset = (page - 1) * records_per_page
-    
     try:
-        # 1. Get total record count for pagination metadata
-        count_query = "SELECT COUNT(*) FROM public.user_uploaded_document_details;"
-        cur.execute(count_query)
+        where_clause = " WHERE created_at IS NOT NULL"
+        params = []
+        
+        if start_time:
+            where_clause += " AND start_time >= %s"
+            params.append(start_time)
+        if end_time:
+            where_clause += " AND end_time <= %s"
+            params.append(end_time)
+            
+        # Get total record count matching the filters
+        count_query = f"SELECT COUNT(*) FROM public.user_uploaded_document_details {where_clause};"
+        cur.execute(count_query, tuple(params))
         total_records = cur.fetchone()[0]
         
-        # 2. Fetch the specific slice of records
-        data_query = """
+        # Build base selection query
+        data_query = f"""
             SELECT 
                 psid, 
                 COALESCE(mljourney, 'Unknown') as journey, 
@@ -23,13 +31,22 @@ def get_paginated_summary(page: int, records_per_page: int):
                 COALESCE(doctype_code, 'Unknown') as doctype,
                 created_at
             FROM public.user_uploaded_document_details
+            {where_clause}
             ORDER BY created_at DESC
-            LIMIT %s OFFSET %s;
         """
-        cur.execute(data_query, (records_per_page, offset))
+        
+        # Apply pagination constraints exclusively for detailed_view
+        if report_type == "detailed_view" and page is not None and records_per_page is not None:
+            offset = (page - 1) * records_per_page
+            data_query += " LIMIT %s OFFSET %s;"
+            data_params = params + [records_per_page, offset]
+        else:
+            data_query += ";"
+            data_params = params
+            
+        cur.execute(data_query, tuple(data_params))
         rows = cur.fetchall()
         
-        # Format database rows into dictionary list objects
         summary_list = []
         for row in rows:
             summary_list.append({
@@ -40,15 +57,21 @@ def get_paginated_summary(page: int, records_per_page: int):
                 "created_at": row[4].strftime("%Y-%m-%d %H:%M:%S") if row[4] else None
             })
             
-        return {
+        # Format matching the original structural return schema
+        result = {
             "total_records": total_records,
-            "current_page": page,
-            "records_per_page": records_per_page,
+            "report_type": report_type,
             "records": summary_list
         }
         
+        if report_type == "detailed_view":
+            result["current_page"] = page
+            result["records_per_page"] = records_per_page
+            
+        return result
+        
     except Exception as e:
-        logger.error(f"Error fetching paginated summary views: {e}")
+        logger.error(f"Error in get_summary_report: {e}")
         return None
     finally:
         cur.close()
@@ -60,35 +83,53 @@ def get_paginated_summary(page: int, records_per_page: int):
 from fastapi import Header, Query, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from util.db_handler import get_paginated_summary
+from typing import Optional
+from util.db_handler import get_summary_report
 
 @UserstatsServer.get("/view_summary", status_code=status.HTTP_200_OK)
 async def view_summary(
-    page: int = Query(..., ge=1, description="The target page number (starts at 1)"),
-    records: int = Query(..., ge=1, le=100, description="Number of items to fetch per page"),
+    report_type: str = Query(...),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    page: Optional[int] = Query(None),
+    records: Optional[int] = Query(None),
     DCREST_JWT_TOKEN: str = Header()
 ):
-    """
-    Provides a cleanly paginated slice of transactional document summaries.
-    """
     if not auth(DCREST_JWT_TOKEN):
         return JSONResponse(
             content={"error": "Invalid token"}, 
             status_code=status.HTTP_401_UNAUTHORIZED
         )
         
+    # Guardrail validation for detailed report parameters
+    if report_type == "detailed_view" and (page is None or records is None):
+        return JSONResponse(
+            content={
+                "status": "error", 
+                "message": "Parameters 'page' and 'records' are required for detailed_view report type."
+            },
+            status_code=status.HTTP_400_BAD_REQUEST
+        )
+        
     try:
-        paginated_data = get_paginated_summary(page, records)
-        if paginated_data is not None:
+        data = get_summary_report(
+            report_type=report_type,
+            start_time=start_time,
+            end_time=end_time,
+            page=page,
+            records_per_page=records
+        )
+        
+        if data is not None:
             return jsonable_encoder({
                 "status": "success", 
-                "data": paginated_data
+                "data": data
             })
         else:
             return JSONResponse(
-                content={"status": "error", "message": "Failed to compile system summary rows"},
+                content={"status": "error", "message": "Failed to fetch summary data"},
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
     except Exception as error:
-        logger.error(f"Error handling paginated summary viewing request: {error}")
+        logger.error(f"Error in view_summary endpoint: {error}")
         return jsonable_encoder({"status": "error", "message": str(error)})
