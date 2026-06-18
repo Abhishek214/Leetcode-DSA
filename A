@@ -1,189 +1,54 @@
-def get_user_adoption_by_year(year: str):
+def get_paginated_summary(page: int, records_per_page: int):
     """
-    Fetches user adoption matrix strictly filtered by a target calendar year.
+    Fetches a specific page slice of summary records from the document details table.
     """
     conn = getconn()
     cur = conn.cursor()
     
-    ALLOWED_JOURNEYS = [
-        "CMB-KYC", "Servicing", "WPB-IRR", "SOW", "SelfService", 
-        "HKBBPM", "SMARTSERVE", "SMARTSERVE-UKBBPM", "Gen AI", "Traditional"
-    ]
-    MONTHS_SHORT = ["Dec", "Nov", "Oct", "Sep", "Aug", "Jul", "Jun", "May", "Apr", "Mar", "Feb", "Jan"]
-    journey_upper_map = {j.upper(): j for j in ALLOWED_JOURNEYS}
+    # Calculate offset
+    offset = (page - 1) * records_per_page
     
     try:
-        adoption_staging = {j: {m: 0 for m in MONTHS_SHORT} for j in ALLOWED_JOURNEYS}
+        # 1. Get total record count for pagination metadata
+        count_query = "SELECT COUNT(*) FROM public.user_uploaded_document_details;"
+        cur.execute(count_query)
+        total_records = cur.fetchone()[0]
         
-        query = """
+        # 2. Fetch the specific slice of records
+        data_query = """
             SELECT 
-                TO_CHAR(created_at, 'Mon') as c_month,
-                COALESCE(mljourney, 'Unknown') as journey,
-                COUNT(DISTINCT psid) as unique_users
+                psid, 
+                COALESCE(mljourney, 'Unknown') as journey, 
+                COALESCE(feature, 'Unknown') as feature, 
+                COALESCE(doctype_code, 'Unknown') as doctype,
+                created_at
             FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL AND EXTRACT(YEAR FROM created_at)::INT = %s
-            GROUP BY TO_CHAR(created_at, 'Mon'), COALESCE(mljourney, 'Unknown');
+            ORDER BY created_at DESC
+            LIMIT %s OFFSET %s;
         """
-        cur.execute(query, (int(year),))
-        results = cur.fetchall()
+        cur.execute(data_query, (records_per_page, offset))
+        rows = cur.fetchall()
         
-        for row in results:
-            c_month, db_journey, unique_users = row
-            norm_journey = db_journey.strip().upper()
-            if norm_journey not in journey_upper_map:
-                continue
-            canonical_journey = journey_upper_map[norm_journey]
-            month_clean = c_month.strip().capitalize()
+        # Format database rows into dictionary list objects
+        summary_list = []
+        for row in rows:
+            summary_list.append({
+                "psid": row[0],
+                "journey": row[1],
+                "feature": row[2],
+                "doctype": row[3],
+                "created_at": row[4].strftime("%Y-%m-%d %H:%M:%S") if row[4] else None
+            })
             
-            if month_clean in adoption_staging[canonical_journey]:
-                adoption_staging[canonical_journey][month_clean] += unique_users
+        return {
+            "total_records": total_records,
+            "current_page": page,
+            "records_per_page": records_per_page,
+            "records": summary_list
+        }
         
-        year_matrix = [["product"] + MONTHS_SHORT]
-        for j in ALLOWED_JOURNEYS:
-            row = [j] + [adoption_staging[j][m] for m in MONTHS_SHORT]
-            year_matrix.append(row)
-            
-        return {year: year_matrix}
     except Exception as e:
-        logger.error(f"Error compiling filtered single year user adoption: {e}")
-        return None
-    finally:
-        cur.close()
-        conn.close()
-
-
-def get_user_by_journey_data(filters: dict):
-    """
-    Fetches unique user counts grouped by operational journeys with full filters.
-    """
-    conn = getconn()
-    cur = conn.cursor()
-    try:
-        where_clause = " WHERE d.created_at IS NOT NULL"
-        params = []
-        
-        if filters.get("start_time"):
-            where_clause += " AND d.start_time >= %s"
-            params.append(filters["start_time"])
-        if filters.get("end_time"):
-            where_clause += " AND d.end_time <= %s"
-            params.append(filters["end_time"])
-        if filters.get("journey"):
-            where_clause += " AND UPPER(d.mljourney) = UPPER(%s)"
-            params.append(filters["journey"])
-        if filters.get("market"):
-            where_clause += " AND w.market = %s"
-            params.append(filters["market"])
-        if filters.get("feature"):
-            where_clause += " AND d.feature = %s"
-            params.append(filters["feature"])
-        if filters.get("doctype"):
-            where_clause += " AND d.doctype_code = %s"
-            params.append(filters["doctype"])
-
-        query = f"""
-            SELECT COALESCE(d.mljourney, 'Unknown') as journey, COUNT(DISTINCT d.psid) as count
-            FROM public.user_uploaded_document_details d
-            LEFT JOIN public.table_warden w ON d.psid = w.psid
-            {where_clause}
-            GROUP BY COALESCE(d.mljourney, 'Unknown');
-        """
-        cur.execute(query, tuple(params))
-        return {row[0]: row[1] for row in cur.fetchall()}
-    except Exception as e:
-        logger.error(f"Error fetching user_by_journey data: {e}")
-        return None
-    finally:
-        cur.close()
-        conn.close()
-
-
-def get_user_by_feature_data(filters: dict):
-    """
-    Fetches unique user counts grouped by product feature with full filters.
-    """
-    conn = getconn()
-    cur = conn.cursor()
-    try:
-        where_clause = " WHERE d.created_at IS NOT NULL"
-        params = []
-        
-        if filters.get("start_time"):
-            where_clause += " AND d.start_time >= %s"
-            params.append(filters["start_time"])
-        if filters.get("end_time"):
-            where_clause += " AND d.end_time <= %s"
-            params.append(filters["end_time"])
-        if filters.get("journey"):
-            where_clause += " AND UPPER(d.mljourney) = UPPER(%s)"
-            params.append(filters["journey"])
-        if filters.get("market"):
-            where_clause += " AND w.market = %s"
-            params.append(filters["market"])
-        if filters.get("feature"):
-            where_clause += " AND d.feature = %s"
-            params.append(filters["feature"])
-        if filters.get("doctype"):
-            where_clause += " AND d.doctype_code = %s"
-            params.append(filters["doctype"])
-
-        query = f"""
-            SELECT COALESCE(d.feature, 'Unknown') as feature, COUNT(DISTINCT d.psid) as count
-            FROM public.user_uploaded_document_details d
-            LEFT JOIN public.table_warden w ON d.psid = w.psid
-            {where_clause}
-            GROUP BY COALESCE(d.feature, 'Unknown');
-        """
-        cur.execute(query, tuple(params))
-        return {row[0]: row[1] for row in cur.fetchall()}
-    except Exception as e:
-        logger.error(f"Error fetching user_by_feature data: {e}")
-        return None
-    finally:
-        cur.close()
-        conn.close()
-
-
-def get_user_by_market_data(filters: dict):
-    """
-    Fetches unique user counts grouped by regional market with full filters.
-    """
-    conn = getconn()
-    cur = conn.cursor()
-    try:
-        where_clause = " WHERE w.date IS NOT NULL"
-        params = []
-        
-        if filters.get("start_time"):
-            where_clause += " AND w.date >= %s"
-            params.append(filters["start_time"])
-        if filters.get("end_time"):
-            where_clause += " AND w.date <= %s"
-            params.append(filters["end_time"])
-        if filters.get("journey"):
-            where_clause += " AND UPPER(d.mljourney) = UPPER(%s)"
-            params.append(filters["journey"])
-        if filters.get("market"):
-            where_clause += " AND w.market = %s"
-            params.append(filters["market"])
-        if filters.get("feature"):
-            where_clause += " AND d.feature = %s"
-            params.append(filters["feature"])
-        if filters.get("doctype"):
-            where_clause += " AND d.doctype_code = %s"
-            params.append(filters["doctype"])
-
-        query = f"""
-            SELECT COALESCE(w.market, 'Unknown') as market, COUNT(DISTINCT w.psid) as count
-            FROM public.table_warden w
-            LEFT JOIN public.user_uploaded_document_details d ON w.psid = d.psid
-            {where_clause}
-            GROUP BY COALESCE(w.market, 'Unknown');
-        """
-        cur.execute(query, tuple(params))
-        return {row[0]: row[1] for row in cur.fetchall()}
-    except Exception as e:
-        logger.error(f"Error fetching user_by_market data: {e}")
+        logger.error(f"Error fetching paginated summary views: {e}")
         return None
     finally:
         cur.close()
@@ -195,95 +60,35 @@ def get_user_by_market_data(filters: dict):
 from fastapi import Header, Query, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from typing import Optional
-from util.db_handler import (
-    get_user_adoption_by_year,
-    get_user_by_journey_data,
-    get_user_by_feature_data,
-    get_user_by_market_data
-)
+from util.db_handler import get_paginated_summary
 
-# -------------------------------------------------------------
-# 1. USER ADOPTION ENDPOINT (Only accepts year parameter)
-# -------------------------------------------------------------
-@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
-async def view_user_adoption(
-    year: str = Query(..., description="Target year calculation constraint filter"),
+@UserstatsServer.get("/view_summary", status_code=status.HTTP_200_OK)
+async def view_summary(
+    page: int = Query(..., ge=1, description="The target page number (starts at 1)"),
+    records: int = Query(..., ge=1, le=100, description="Number of items to fetch per page"),
     DCREST_JWT_TOKEN: str = Header()
 ):
+    """
+    Provides a cleanly paginated slice of transactional document summaries.
+    """
     if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        return JSONResponse(
+            content={"error": "Invalid token"}, 
+            status_code=status.HTTP_401_UNAUTHORIZED
+        )
         
-    data = get_user_adoption_by_year(year)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"User_adoption": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile user adoption data"}, status_code=500)
-
-
-# -------------------------------------------------------------
-# 2. USER BY JOURNEY ENDPOINT (With all filters restored)
-# -------------------------------------------------------------
-@UserstatsServer.get("/user_by_journey", status_code=status.HTTP_200_OK)
-async def view_user_by_journey(
-    DCREST_JWT_TOKEN: str = Header(),
-    start_time: Optional[str] = Query(None),
-    end_time: Optional[str] = Query(None),
-    journey: Optional[str] = Query(None),
-    market: Optional[str] = Query(None),
-    feature: Optional[str] = Query(None),
-    doctype: Optional[str] = Query(None)
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
-    data = get_user_by_journey_data(filters)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"User_by_journey": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile journey analytics"}, status_code=500)
-
-
-# -------------------------------------------------------------
-# 3. USER BY FEATURE ENDPOINT (With all filters restored)
-# -------------------------------------------------------------
-@UserstatsServer.get("/user_by_feature", status_code=status.HTTP_200_OK)
-async def view_user_by_feature(
-    DCREST_JWT_TOKEN: str = Header(),
-    start_time: Optional[str] = Query(None),
-    end_time: Optional[str] = Query(None),
-    journey: Optional[str] = Query(None),
-    market: Optional[str] = Query(None),
-    feature: Optional[str] = Query(None),
-    doctype: Optional[str] = Query(None)
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
-    data = get_user_by_feature_data(filters)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"User_by_Feature": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile feature analytics"}, status_code=500)
-
-
-# -------------------------------------------------------------
-# 4. USER BY MARKET ENDPOINT (With all filters restored)
-# -------------------------------------------------------------
-@UserstatsServer.get("/user_by_market", status_code=status.HTTP_200_OK)
-async def view_user_by_market(
-    DCREST_JWT_TOKEN: str = Header(),
-    start_time: Optional[str] = Query(None),
-    end_time: Optional[str] = Query(None),
-    journey: Optional[str] = Query(None),
-    market: Optional[str] = Query(None),
-    feature: Optional[str] = Query(None),
-    doctype: Optional[str] = Query(None)
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
-    data = get_user_by_market_data(filters)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"User_by_market": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile market analytics"}, status_code=500)
+    try:
+        paginated_data = get_paginated_summary(page, records)
+        if paginated_data is not None:
+            return jsonable_encoder({
+                "status": "success", 
+                "data": paginated_data
+            })
+        else:
+            return JSONResponse(
+                content={"status": "error", "message": "Failed to compile system summary rows"},
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+    except Exception as error:
+        logger.error(f"Error handling paginated summary viewing request: {error}")
+        return jsonable_encoder({"status": "error", "message": str(error)})
