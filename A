@@ -1,27 +1,305 @@
+import io
+import datetime
+import base64
+from openpyxl import Workbook
+from typing import Optional, List
+
 def sanitize_list_filter(filter_list):
-    """Removes UI placeholder noise like '-', '', or 'Not Available' from filters"""
+    """Removes UI placeholder noise like '-', '', or 'Not Available' from incoming filters."""
     if not filter_list:
         return None
-    
-    # Filter out common frontend placeholder strings
-    cleaned = [x for x in filter_list if x not in (None, "", "-", "Not Available", "UNKNOWN")]
-    
-    # If the list is now empty after cleaning, return None so the SQL WHERE clause skips it
+    cleaned = [x for x in filter_list if x not in (None, "", "-", "Not Available", "UNKNOWN", "null")]
     return cleaned if len(cleaned) > 0 else None
 
 
-
-# Clean the incoming arrays before building the SQL query params
-use_case_clean = sanitize_list_filter(filters.get("use_case"))
-market_clean = sanitize_list_filter(filters.get("market"))
-feature_clean = sanitize_list_filter(filters.get("feature"))
-doctype_clean = sanitize_list_filter(filters.get("documentType"))
-
-# Then only append to your WHERE clause if the cleaned filter is NOT None
-if use_case_clean:
-    where_clause += " AND d.mljourney = ANY(%s)"
-    params.append(use_case_clean)
+def get_summary_report(filters: dict):
+    """
+    Fetches summary or detailed reports matching the exact schemas 
+    of 52073.jpg and 52074.jpg respectively.
+    """
+    conn = getconn()
+    cur = conn.cursor()
     
-if market_clean:
-    where_clause += " AND w.market = ANY(%s)"
-    params.append(market_clean)
+    report_type = filters.get("report_type", "summary").lower()
+    
+    try:
+        # 1. Clean incoming list filters
+        use_case_clean = sanitize_list_filter(filters.get("use_case"))
+        market_clean = sanitize_list_filter(filters.get("market"))
+        feature_clean = sanitize_list_filter(filters.get("feature"))
+        doctype_clean = sanitize_list_filter(filters.get("documentType"))
+        
+        # 2. Build common WHERE clause
+        where_clause = " WHERE d.created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("fromDate"):
+            where_clause += " AND d.start_time >= %s"
+            params.append(filters["fromDate"])
+        if filters.get("toDate"):
+            where_clause += " AND d.end_time <= %s"
+            params.append(filters["toDate"])
+        if use_case_clean:
+            where_clause += " AND d.mljourney = ANY(%s)"
+            params.append(use_case_clean)
+        if market_clean:
+            where_clause += " AND w.market = ANY(%s)"
+            params.append(market_clean)
+        if feature_clean:
+            where_clause += " AND d.feature = ANY(%s)"
+            params.append(feature_clean)
+        if doctype_clean:
+            where_clause += " AND d.doctype_code = ANY(%s)"
+            params.append(doctype_clean)
+
+        page = filters.get("page")
+        records_per_page = filters.get("records")
+        data_list = []
+
+        # 3. Branch execution based on report_type
+        if report_type == "summary":
+            # --- SUMMARY VIEW MODEL (Matches 52073.jpg) ---
+            count_query = f"""
+                SELECT COUNT(*) FROM (
+                    SELECT 1 FROM public.user_uploaded_document_details d
+                    LEFT JOIN public.table_warden w ON d.psid = w.psid
+                    {where_clause}
+                    GROUP BY COALESCE(d.mljourney, 'Unknown'), COALESCE(d.feature, 'Unknown')
+                ) as sub;
+            """
+            cur.execute(count_query, tuple(params))
+            total_count = cur.fetchone()[0]
+
+            data_query = f"""
+                SELECT 
+                    COALESCE(d.mljourney, 'Unknown') as mljourney,
+                    COALESCE(d.feature, 'Unknown') as feature,
+                    COUNT(*) as count
+                FROM public.user_uploaded_document_details d
+                LEFT JOIN public.table_warden w ON d.psid = w.psid
+                {where_clause}
+                GROUP BY COALESCE(d.mljourney, 'Unknown'), COALESCE(d.feature, 'Unknown')
+                ORDER BY count DESC
+            """
+            
+            if page is not None and records_per_page is not None:
+                data_query += " LIMIT %s OFFSET %s;"
+                data_params = params + [records_per_page, (page - 1) * records_per_page]
+            else:
+                data_query += ";"
+                data_params = params
+
+            cur.execute(data_query, tuple(data_params))
+            rows = cur.fetchall()
+            
+            for row in rows:
+                data_list.append({
+                    "mljourney": row[0],
+                    "feature": row[1],
+                    "count": row[2]
+                })
+
+        else:
+            # --- DETAILED VIEW MODEL (Matches 52074.jpg) ---
+            count_query = f"""
+                SELECT COUNT(*) FROM public.user_uploaded_document_details d
+                LEFT JOIN public.table_warden w ON d.psid = w.psid
+                {where_clause};
+            """
+            cur.execute(count_query, tuple(params))
+            total_count = cur.fetchone()[0]
+
+            data_query = f"""
+                SELECT 
+                    d.id,
+                    COALESCE(d.filename, d.doc_name) as filename,
+                    d.document_ui_id,
+                    d.start_time,
+                    d.end_time,
+                    d.processing_time,
+                    d.doctype_code,
+                    d.mljourney,
+                    d.feature,
+                    d.department,
+                    d.psid,
+                    d.classified_by,
+                    d.created_at,
+                    d.updated_at
+                FROM public.user_uploaded_document_details d
+                LEFT JOIN public.table_warden w ON d.psid = w.psid
+                {where_clause}
+                ORDER BY d.created_at DESC
+            """
+            
+            if page is not None and records_per_page is not None:
+                data_query += " LIMIT %s OFFSET %s;"
+                data_params = params + [records_per_page, (page - 1) * records_per_page]
+            else:
+                data_query += ";"
+                data_params = params
+
+            cur.execute(data_query, tuple(data_params))
+            rows = cur.fetchall()
+            
+            for row in rows:
+                data_list.append({
+                    "id": row[0],
+                    "filename": row[1],
+                    "document_ui_id": row[2],
+                    "start_time": row[3].isoformat() if isinstance(row[3], datetime.datetime) else row[3],
+                    "end_time": row[4].isoformat() if isinstance(row[4], datetime.datetime) else row[4],
+                    "processing_time": str(row[5]) if row[5] is not None else None,
+                    "doctype_code": row[6],
+                    "mljourney": row[7],
+                    "feature": row[8],
+                    "department": row[9],
+                    "psid": row[10],
+                    "classified_by": row[11],
+                    "created_at": row[12].isoformat() if isinstance(row[12], datetime.datetime) else row[12],
+                    "updated_at": row[13].isoformat() if isinstance(row[13], datetime.datetime) else row[13]
+                })
+
+        return {
+            "totalcount": total_count,
+            "data": data_list
+        }
+
+    except Exception as e:
+        logger.error(f"error in get_summary_report: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def export_summary_to_excel_b64(filters: dict) -> Optional[str]:
+    """
+    Generates an Excel binary spreadsheet mirroring either the 
+    Summary or Detailed column structure depending on report_type.
+    """
+    conn = getconn()
+    cur = conn.cursor()
+    
+    report_type = filters.get("report_type", "summary").lower()
+    
+    try:
+        use_case_clean = sanitize_list_filter(filters.get("use_case"))
+        market_clean = sanitize_list_filter(filters.get("market"))
+        feature_clean = sanitize_list_filter(filters.get("feature"))
+        doctype_clean = sanitize_list_filter(filters.get("documentType"))
+        
+        where_clause = " WHERE d.created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("fromDate"):
+            where_clause += " AND d.start_time >= %s"
+            params.append(filters["fromDate"])
+        if filters.get("toDate"):
+            where_clause += " AND d.end_time <= %s"
+            params.append(filters["toDate"])
+        if use_case_clean:
+            where_clause += " AND d.mljourney = ANY(%s)"
+            params.append(use_case_clean)
+        if market_clean:
+            where_clause += " AND w.market = ANY(%s)"
+            params.append(market_clean)
+        if feature_clean:
+            where_clause += " AND d.feature = ANY(%s)"
+            params.append(feature_clean)
+        if doctype_clean:
+            where_clause += " AND d.doctype_code = ANY(%s)"
+            params.append(doctype_clean)
+
+        wb = Workbook()
+        ws = wb.active
+        
+        if report_type == "summary":
+            ws.title = "Summary View"
+            ws.append(["ML Journey", "Feature", "Count"])
+            
+            query = f"""
+                SELECT 
+                    COALESCE(d.mljourney, 'Unknown'),
+                    COALESCE(d.feature, 'Unknown'),
+                    COUNT(*)
+                FROM public.user_uploaded_document_details d
+                LEFT JOIN public.table_warden w ON d.psid = w.psid
+                {where_clause}
+                GROUP BY COALESCE(d.mljourney, 'Unknown'), COALESCE(d.feature, 'Unknown')
+                ORDER BY COUNT(*) DESC;
+            """
+            cur.execute(query, tuple(params))
+            for row in cur.fetchall():
+                ws.append([row[0], row[1], row[2]])
+        else:
+            ws.title = "Detailed View"
+            ws.append([
+                "ID", "Filename", "Document UI ID", "Start Time", "End Time", 
+                "Processing Time", "Doc Type Code", "ML Journey", "Feature", 
+                "Department", "PSID", "Classified By", "Created At", "Updated At"
+            ])
+            
+            query = f"""
+                SELECT 
+                    d.id, COALESCE(d.filename, d.doc_name), d.document_ui_id, d.start_time, d.end_time,
+                    d.processing_time, d.doctype_code, d.mljourney, d.feature, d.department,
+                    d.psid, d.classified_by, d.created_at, d.updated_at
+                FROM public.user_uploaded_document_details d
+                LEFT JOIN public.table_warden w ON d.psid = w.psid
+                {where_clause}
+                ORDER BY d.created_at DESC;
+            """
+            cur.execute(query, tuple(params))
+            for row in cur.fetchall():
+                st = row[3].strftime("%Y-%m-%d %H:%M:%S") if isinstance(row[3], datetime.datetime) else row[3]
+                et = row[4].strftime("%Y-%m-%d %H:%M:%S") if isinstance(row[4], datetime.datetime) else row[4]
+                ca = row[12].strftime("%Y-%m-%d %H:%M:%S") if isinstance(row[12], datetime.datetime) else row[12]
+                ua = row[13].strftime("%Y-%m-%d %H:%M:%S") if isinstance(row[13], datetime.datetime) else row[13]
+                
+                ws.append([
+                    row[0], row[1], row[2], st, et, 
+                    str(row[5]) if row[5] is not None else "", row[6], row[7], row[8], 
+                    row[9], row[10], row[11], ca, ua
+                ])
+
+        for col in ws.columns:
+            max_len = max(len(str(cell.value or '')) for cell in col)
+            ws.column_dimensions[col[0].column_letter].width = max(max_len + 3, 11)
+
+        excel_buffer = io.BytesIO()
+        wb.save(excel_buffer)
+        excel_buffer.seek(0)
+        return base64.b64encode(excel_buffer.read()).decode('utf-8')
+
+    except Exception as e:
+        logger.error(f"error in export_summary_to_excel_b64: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+@UserstatsServer.post("/view_summary", status_code=status.HTTP_200_OK)
+async def view_summary(
+    payload: AnalyticsFilterRequest,
+    DCREST_JWT_TOKEN: str = Header()
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    try:
+        filters = payload.model_dump(exclude_none=True)
+        data = get_summary_report(filters)
+        
+        if data is not None:
+            # Unpack dictionary directly to avoid nested properties wrapping
+            return jsonable_encoder({
+                "status": "success",
+                **data
+            })
+        else:
+            return JSONResponse(content={"status": "error", "message": "Failed to fetch summary data"}, status_code=500)
+    except Exception as error:
+        logger.error(f"error in view_summary endpoint: {error}")
+        return jsonable_encoder({"status": "error", "message": str(error)})
+
