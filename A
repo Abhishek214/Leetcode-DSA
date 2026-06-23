@@ -1,41 +1,39 @@
 import requests
 import json
 
-# Configuration
-BASE_URL = "http://127.0.0.1:8000"  # Update with your actual host/port if different
-ENDPOINT = "/user_adoption"         # Update with your router prefix if nested (e.g., /userstats/user_adoption)
-MOCK_TOKEN = "your_test_jwt_token_here"
+JIRA_TICKET = "DCREST-5432"
+BASE_URL = "http://127.0.0.1:8000"  # Update with your active host/port if different
+ENDPOINT = "/user_adoption"
 
 def test_user_adoption():
     url = f"{BASE_URL}{ENDPOINT}"
+    year = "2026"
     
-    # Setup headers and query parameters
     headers = {
-        "DCREST-JWT-TOKEN": MOCK_TOKEN
+        "DCREST-JWT-TOKEN": "your_test_jwt_token_here"  # Match your auth token expectation
     }
     params = {
-        "year": "2026"
+        "year": year
     }
     
-    print(f"Sending GET request to: {url}")
-    print(f"Params: {params}\n")
-    
     try:
+        # Perform actual HTTP call to your API layer
         response = requests.get(url, headers=headers, params=params)
         
-        print(f"Response Status Code: {response.status_code}")
-        
         if response.status_code == 200:
-            print("Success! Response Payload:")
-            print(json.dumps(response.json(), indent=4))
-        else:
-            print("Failed! Response Error Body:")
-            print(response.text)
+            payload = response.json()
+            # Dynamic data extraction checking for the key inside the response structure
+            matrix_data = payload.get("data", {}).get("user_adoption", {}).get(year, [])
             
-    except requests.exceptions.ConnectionError:
-        print(f"Error: Could not connect to the server at {BASE_URL}. Is your FastAPI app running?")
+            assert len(matrix_data) > 0, f"❌ Test failed for [{JIRA_TICKET}]: Data matrix empty"
+            print(f"✅ Test passed for [{JIRA_TICKET}]")
+            print(json.dumps(payload, indent=2))
+        else:
+            print(f"❌ Test failed for [{JIRA_TICKET}] with Status {response.status_code}: {response.text}")
+            
     except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+        print(f"❌ Test exploded with error: {e}")
 
+# Critical addition to make sure running `python pvt.py` actually invokes the function
 if __name__ == "__main__":
     test_user_adoption()
