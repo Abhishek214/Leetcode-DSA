@@ -1,182 +1,23 @@
-from fastapi import Header, Query, status
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
-from typing import Optional, List
-from util.db_handler import (
-    get_user_adoption_by_year,
-    get_user_by_journey_data,
-    get_user_by_feature_data,
-    get_user_by_market_data,
-    get_summary_report
-)
+from pydantic import BaseModel
+from typing import List, Optional
 
-@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
-async def view_user_adoption(
-    year: str = Query(...),
-    DCREST_JWT_TOKEN: str = Header()
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    data = get_user_adoption_by_year(year)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"user_adoption": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile user adoption data"}, status_code=500)
-
-
-@UserstatsServer.get("/user_by_journey", status_code=status.HTTP_200_OK)
-async def view_user_by_journey(
-    DCREST_JWT_TOKEN: str = Header(),
-    start_time: Optional[str] = Query(None),
-    end_time: Optional[str] = Query(None),
-    use_case: Optional[List[str]] = Query(None),
-    market: Optional[List[str]] = Query(None),
-    feature: Optional[List[str]] = Query(None),
-    doctype: Optional[List[str]] = Query(None)
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    filters = {"start_time": start_time, "end_time": end_time, "use_case": use_case, "market": market, "feature": feature, "doctype": doctype}
-    data = get_user_by_journey_data(filters)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"user_by_journey": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile journey analytics"}, status_code=500)
-
-
-@UserstatsServer.get("/user_by_feature", status_code=status.HTTP_200_OK)
-async def view_user_by_feature(
-    DCREST_JWT_TOKEN: str = Header(),
-    start_time: Optional[str] = Query(None),
-    end_time: Optional[str] = Query(None),
-    use_case: Optional[List[str]] = Query(None),
-    market: Optional[List[str]] = Query(None),
-    feature: Optional[List[str]] = Query(None),
-    doctype: Optional[List[str]] = Query(None)
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    filters = {"start_time": start_time, "end_time": end_time, "use_case": use_case, "market": market, "feature": feature, "doctype": doctype}
-    data = get_user_by_feature_data(filters)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"user_by_feature": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile feature analytics"}, status_code=500)
-
-
-@UserstatsServer.get("/user_by_market", status_code=status.HTTP_200_OK)
-async def view_user_by_market(
-    DCREST_JWT_TOKEN: str = Header(),
-    start_time: Optional[str] = Query(None),
-    end_time: Optional[str] = Query(None),
-    use_case: Optional[List[str]] = Query(None),
-    market: Optional[List[str]] = Query(None),
-    feature: Optional[List[str]] = Query(None),
-    doctype: Optional[List[str]] = Query(None)
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    filters = {"start_time": start_time, "end_time": end_time, "use_case": use_case, "market": market, "feature": feature, "doctype": doctype}
-    data = get_user_by_market_data(filters)
-    if data is not None:
-        return jsonable_encoder({"status": "success", "data": {"user_by_market": data}})
-    return JSONResponse(content={"status": "error", "message": "Failed to compile market analytics"}, status_code=500)
-
-
-@UserstatsServer.get("/view_summary", status_code=status.HTTP_200_OK)
-async def view_summary(
-    report_type: str = Query(...),
-    start_time: Optional[str] = Query(None),
-    end_time: Optional[str] = Query(None),
-    page: Optional[int] = Query(None),
-    records: Optional[int] = Query(None),
-    DCREST_JWT_TOKEN: str = Header()
-):
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
-        
-    try:
-        data = get_summary_report(
-            report_type=report_type,
-            start_time=start_time,
-            end_time=end_time,
-            page=page,
-            records_per_page=records
-        )
-        
-        if data is not None:
-            return jsonable_encoder({"status": "success", "data": data})
-        else:
-            return JSONResponse(content={"status": "error", "message": "Failed to fetch summary data"}, status_code=500)
-    except Exception as error:
-        logger.error(f"error in view_summary endpoint: {error}")
-        return jsonable_encoder({"status": "error", "message": str(error)})
+class AnalyticsFilterRequest(BaseModel):
+    use_case: Optional[List[str]] = None
+    market: Optional[List[str]] = None
+    feature: Optional[List[str]] = None
+    documentType: Optional[List[str]] = None
+    dateRange: Optional[str] = None
+    fromDate: Optional[str] = None
+    toDate: Optional[str] = None
+    page: Optional[int] = None
+    records: Optional[int] = None
+    report_type: Optional[str] = "summary"
 
 
 
 
 import datetime
 from typing import Optional, List
-
-def get_user_adoption_by_year(year: str):
-    """
-    Fetches user adoption matrix for all available use cases sorted chronologically (Jan -> Dec).
-    Filters out future months for the current calendar year.
-    """
-    conn = getconn()
-    cur = conn.cursor()
-    
-    months_short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    current_date = datetime.datetime.now()
-    current_year = current_date.year
-    current_month_idx = current_date.month # 1-indexed
-    
-    target_year = int(year)
-    if target_year == current_year:
-        active_months = months_short[:current_month_idx]
-    else:
-        active_months = months_short
-        
-    try:
-        # Query distinct mljourney values (represented as use cases)
-        cur.execute("SELECT DISTINCT COALESCE(mljourney, 'Unknown') FROM public.user_uploaded_document_details;")
-        all_use_cases = [row[0] for row in cur.fetchall()]
-        
-        adoption_staging = {u: {m: 0 for m in active_months} for u in all_use_cases}
-        
-        query = """
-            SELECT 
-                TO_CHAR(created_at, 'Mon') as c_month,
-                COALESCE(mljourney, 'Unknown') as journey,
-                COUNT(DISTINCT psid) as unique_users
-            FROM public.user_uploaded_document_details
-            WHERE created_at IS NOT NULL AND EXTRACT(YEAR FROM created_at)::INT = %s
-            GROUP BY TO_CHAR(created_at, 'Mon'), COALESCE(mljourney, 'Unknown');
-        """
-        cur.execute(query, (target_year,))
-        results = cur.fetchall()
-        
-        for row in results:
-            c_month, db_journey, unique_users = row
-            month_clean = c_month.strip().capitalize()
-            
-            if db_journey in adoption_staging and month_clean in adoption_staging[db_journey]:
-                adoption_staging[db_journey][month_clean] += unique_users
-        
-        year_matrix = [["product"] + active_months]
-        for u in all_use_cases:
-            row = [u] + [adoption_staging[u][m] for m in active_months]
-            year_matrix.append(row)
-            
-        return {str(year): year_matrix}
-    except Exception as e:
-        logger.error(f"error compiling lowercase single year user adoption: {e}")
-        return None
-    finally:
-        cur.close()
-        conn.close()
-
 
 def get_user_by_journey_data(filters: dict):
     conn = getconn()
@@ -185,12 +26,12 @@ def get_user_by_journey_data(filters: dict):
         where_clause = " WHERE d.created_at IS NOT NULL"
         params = []
         
-        if filters.get("start_time"):
+        if filters.get("fromDate"):
             where_clause += " AND d.start_time >= %s"
-            params.append(filters["start_time"])
-        if filters.get("end_time"):
+            params.append(filters["fromDate"])
+        if filters.get("toDate"):
             where_clause += " AND d.end_time <= %s"
-            params.append(filters["end_time"])
+            params.append(filters["toDate"])
         if filters.get("use_case"):
             where_clause += " AND d.mljourney = ANY(%s)"
             params.append(filters["use_case"])
@@ -200,9 +41,9 @@ def get_user_by_journey_data(filters: dict):
         if filters.get("feature"):
             where_clause += " AND d.feature = ANY(%s)"
             params.append(filters["feature"])
-        if filters.get("doctype"):
+        if filters.get("documentType"):
             where_clause += " AND d.doctype_code = ANY(%s)"
-            params.append(filters["doctype"])
+            params.append(filters["documentType"])
 
         query = f"""
             SELECT COALESCE(d.mljourney, 'Unknown') as journey, COUNT(DISTINCT d.psid) as count
@@ -228,12 +69,12 @@ def get_user_by_feature_data(filters: dict):
         where_clause = " WHERE d.created_at IS NOT NULL"
         params = []
         
-        if filters.get("start_time"):
+        if filters.get("fromDate"):
             where_clause += " AND d.start_time >= %s"
-            params.append(filters["start_time"])
-        if filters.get("end_time"):
+            params.append(filters["fromDate"])
+        if filters.get("toDate"):
             where_clause += " AND d.end_time <= %s"
-            params.append(filters["end_time"])
+            params.append(filters["toDate"])
         if filters.get("use_case"):
             where_clause += " AND d.mljourney = ANY(%s)"
             params.append(filters["use_case"])
@@ -243,9 +84,9 @@ def get_user_by_feature_data(filters: dict):
         if filters.get("feature"):
             where_clause += " AND d.feature = ANY(%s)"
             params.append(filters["feature"])
-        if filters.get("doctype"):
+        if filters.get("documentType"):
             where_clause += " AND d.doctype_code = ANY(%s)"
-            params.append(filters["doctype"])
+            params.append(filters["documentType"])
 
         query = f"""
             SELECT COALESCE(d.feature, 'Unknown') as feature, COUNT(DISTINCT d.psid) as count
@@ -271,12 +112,12 @@ def get_user_by_market_data(filters: dict):
         where_clause = " WHERE w.date IS NOT NULL"
         params = []
         
-        if filters.get("start_time"):
+        if filters.get("fromDate"):
             where_clause += " AND w.date >= %s"
-            params.append(filters["start_time"])
-        if filters.get("end_time"):
+            params.append(filters["fromDate"])
+        if filters.get("toDate"):
             where_clause += " AND w.date <= %s"
-            params.append(filters["end_time"])
+            params.append(filters["toDate"])
         if filters.get("use_case"):
             where_clause += " AND d.mljourney = ANY(%s)"
             params.append(filters["use_case"])
@@ -286,9 +127,9 @@ def get_user_by_market_data(filters: dict):
         if filters.get("feature"):
             where_clause += " AND d.feature = ANY(%s)"
             params.append(filters["feature"])
-        if filters.get("doctype"):
+        if filters.get("documentType"):
             where_clause += " AND d.doctype_code = ANY(%s)"
-            params.append(filters["doctype"])
+            params.append(filters["documentType"])
 
         query = f"""
             SELECT COALESCE(w.market, 'Unknown') as market, COUNT(DISTINCT w.psid) as count
@@ -305,3 +146,190 @@ def get_user_by_market_data(filters: dict):
     finally:
         cur.close()
         conn.close()
+
+
+def get_summary_report(filters: dict):
+    conn = getconn()
+    cur = conn.cursor()
+    try:
+        where_clause = " WHERE d.created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("fromDate"):
+            where_clause += " AND d.start_time >= %s"
+            params.append(filters["fromDate"])
+        if filters.get("toDate"):
+            where_clause += " AND d.end_time <= %s"
+            params.append(filters["toDate"])
+        if filters.get("use_case"):
+            where_clause += " AND d.mljourney = ANY(%s)"
+            params.append(filters["use_case"])
+        if filters.get("market"):
+            where_clause += " AND w.market = ANY(%s)"
+            params.append(filters["market"])
+        if filters.get("feature"):
+            where_clause += " AND d.feature = ANY(%s)"
+            params.append(filters["feature"])
+        if filters.get("documentType"):
+            where_clause += " AND d.doctype_code = ANY(%s)"
+            params.append(filters["documentType"])
+            
+        count_query = f"""
+            SELECT COUNT(*) 
+            FROM public.user_uploaded_document_details d
+            LEFT JOIN public.table_warden w ON d.psid = w.psid 
+            {where_clause};
+        """
+        cur.execute(count_query, tuple(params))
+        total_records = cur.fetchone()[0]
+        
+        data_query = f"""
+            SELECT 
+                COALESCE(d.mljourney, 'Unknown') as mljourney,
+                COALESCE(d.feature, 'Unknown') as feature,
+                COALESCE(d.department, 'Unknown') as department,
+                d.psid,
+                d.created_at,
+                d.doc_name,
+                d.status,
+                d.rejection_reason,
+                d.doc_id,
+                d.doctype_code,
+                d.start_time,
+                d.end_time
+            FROM public.user_uploaded_document_details d
+            LEFT JOIN public.table_warden w ON d.psid = w.psid
+            {where_clause}
+            ORDER BY d.created_at DESC
+        """
+        
+        page = filters.get("page")
+        records_per_page = filters.get("records")
+        
+        if page is not None and records_per_page is not None:
+            offset = (page - 1) * records_per_page
+            data_query += " LIMIT %s OFFSET %s;"
+            data_params = params + [records_per_page, offset]
+        else:
+            data_query += ";"
+            data_params = params
+            
+        cur.execute(data_query, tuple(data_params))
+        rows = cur.fetchall()
+        
+        records_list = []
+        for row in rows:
+            records_list.append({
+                "mljourney": row[0],
+                "feature": row[1],
+                "department": row[2],
+                "psid": row[3],
+                "created_at": row[4].strftime("%Y-%m-%d %H:%M:%S") if row[4] else None,
+                "doc_name": row[5],
+                "status": row[6],
+                "rejection_reason": row[7],
+                "doc_id": row[8],
+                "doctype_code": row[9],
+                "start_time": row[10],
+                "end_time": row[11]
+            })
+            
+        report_type = filters.get("report_type", "summary")
+        result = {
+            "total_records": total_records,
+            "report_type": report_type.lower(),
+            "records": records_list
+        }
+        
+        if page is not None and records_per_page is not None:
+            result["current_page"] = page
+            result["records_per_page"] = records_per_page
+            
+        return result
+        
+    except Exception as e:
+        logger.error(f"error in get_summary_report: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+
+from fastapi import Header, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
+from util.db_handler import (
+    get_user_by_journey_data,
+    get_user_by_feature_data,
+    get_user_by_market_data,
+    get_summary_report
+)
+from schemas.analytics_schema import AnalyticsFilterRequest
+
+@UserstatsServer.post("/user_by_journey", status_code=status.HTTP_200_OK)
+async def view_user_by_journey(
+    payload: AnalyticsFilterRequest,
+    DCREST_JWT_TOKEN: str = Header()
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = payload.model_dump(exclude_none=True)
+    data = get_user_by_journey_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"user_by_journey": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile journey analytics"}, status_code=500)
+
+
+@UserstatsServer.post("/user_by_feature", status_code=status.HTTP_200_OK)
+async def view_user_by_feature(
+    payload: AnalyticsFilterRequest,
+    DCREST_JWT_TOKEN: str = Header()
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = payload.model_dump(exclude_none=True)
+    data = get_user_by_feature_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"user_by_feature": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile feature analytics"}, status_code=500)
+
+
+@UserstatsServer.post("/user_by_market", status_code=status.HTTP_200_OK)
+async def view_user_by_market(
+    payload: AnalyticsFilterRequest,
+    DCREST_JWT_TOKEN: str = Header()
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = payload.model_dump(exclude_none=True)
+    data = get_user_by_market_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"user_by_market": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile market analytics"}, status_code=500)
+
+
+@UserstatsServer.post("/view_summary", status_code=status.HTTP_200_OK)
+async def view_summary(
+    payload: AnalyticsFilterRequest,
+    DCREST_JWT_TOKEN: str = Header()
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    try:
+        filters = payload.model_dump(exclude_none=True)
+        data = get_summary_report(filters)
+        
+        if data is not None:
+            return jsonable_encoder({"status": "success", "data": data})
+        else:
+            return JSONResponse(content={"status": "error", "message": "Failed to fetch summary data"}, status_code=500)
+    except Exception as error:
+        logger.error(f"error in view_summary endpoint: {error}")
+        return jsonable_encoder({"status": "error", "message": str(error)})
+
+..
