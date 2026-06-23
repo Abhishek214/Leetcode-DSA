@@ -1,7 +1,198 @@
+import datetime
+from typing import Optional, List
+
+def get_user_adoption_by_year(year: str):
+    """
+    Fetches user adoption matrix for all available journeys sorted chronologically (Jan -> Dec).
+    Filters out future months for the current calendar year.
+    """
+    conn = getconn()
+    cur = conn.cursor()
+    
+    months_short = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    current_date = datetime.datetime.now()
+    current_year = current_date.year
+    current_month_idx = current_date.month # 1-indexed
+    
+    # Slice columns dynamically if evaluating the current active calendar year
+    target_year = int(year)
+    if target_year == current_year:
+        active_months = months_short[:current_month_idx]
+    else:
+        active_months = months_short
+        
+    try:
+        # First query all distinct journeys present in the table to remove restrictions
+        cur.execute("SELECT DISTINCT COALESCE(mljourney, 'Unknown') FROM public.user_uploaded_document_details;")
+        all_journeys = [row[0] for row in cur.fetchall()]
+        
+        adoption_staging = {j: {m: 0 for m in active_months} for j in all_journeys}
+        
+        query = """
+            SELECT 
+                TO_CHAR(created_at, 'Mon') as c_month,
+                COALESCE(mljourney, 'Unknown') as journey,
+                COUNT(DISTINCT psid) as unique_users
+            FROM public.user_uploaded_document_details
+            WHERE created_at IS NOT NULL AND EXTRACT(YEAR FROM created_at)::INT = %s
+            GROUP BY TO_CHAR(created_at, 'Mon'), COALESCE(mljourney, 'Unknown');
+        """
+        cur.execute(query, (target_year,))
+        results = cur.fetchall()
+        
+        for row in results:
+            c_month, db_journey, unique_users = row
+            month_clean = c_month.strip().capitalize()
+            
+            if db_journey in adoption_staging and month_clean in adoption_staging[db_journey]:
+                adoption_staging[db_journey][month_clean] += unique_users
+        
+        year_matrix = [["product"] + active_months]
+        for j in all_journeys:
+            row = [j] + [adoption_staging[j][m] for m in active_months]
+            year_matrix.append(row)
+            
+        return {str(year): year_matrix}
+    except Exception as e:
+        logger.error(f"error compiling lowercase single year user adoption: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_by_journey_data(filters: dict):
+    conn = getconn()
+    cur = conn.cursor()
+    try:
+        where_clause = " WHERE d.created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("start_time"):
+            where_clause += " AND d.start_time >= %s"
+            params.append(filters["start_time"])
+        if filters.get("end_time"):
+            where_clause += " AND d.end_time <= %s"
+            params.append(filters["end_time"])
+        if filters.get("journey"):
+            where_clause += " AND d.mljourney = ANY(%s)"
+            params.append(filters["journey"])
+        if filters.get("market"):
+            where_clause += " AND w.market = ANY(%s)"
+            params.append(filters["market"])
+        if filters.get("feature"):
+            where_clause += " AND d.feature = ANY(%s)"
+            params.append(filters["feature"])
+        if filters.get("doctype"):
+            where_clause += " AND d.doctype_code = ANY(%s)"
+            params.append(filters["doctype"])
+
+        query = f"""
+            SELECT COALESCE(d.mljourney, 'Unknown') as journey, COUNT(DISTINCT d.psid) as count
+            FROM public.user_uploaded_document_details d
+            LEFT JOIN public.table_warden w ON d.psid = w.psid
+            {where_clause}
+            GROUP BY COALESCE(d.mljourney, 'Unknown');
+        """
+        cur.execute(query, tuple(params))
+        return {row[0].lower(): row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"error fetching user_by_journey data: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_by_feature_data(filters: dict):
+    conn = getconn()
+    cur = conn.cursor()
+    try:
+        where_clause = " WHERE d.created_at IS NOT NULL"
+        params = []
+        
+        if filters.get("start_time"):
+            where_clause += " AND d.start_time >= %s"
+            params.append(filters["start_time"])
+        if filters.get("end_time"):
+            where_clause += " AND d.end_time <= %s"
+            params.append(filters["end_time"])
+        if filters.get("journey"):
+            where_clause += " AND d.mljourney = ANY(%s)"
+            params.append(filters["journey"])
+        if filters.get("market"):
+            where_clause += " AND w.market = ANY(%s)"
+            params.append(filters["market"])
+        if filters.get("feature"):
+            where_clause += " AND d.feature = ANY(%s)"
+            params.append(filters["feature"])
+        if filters.get("doctype"):
+            where_clause += " AND d.doctype_code = ANY(%s)"
+            params.append(filters["doctype"])
+
+        query = f"""
+            SELECT COALESCE(d.feature, 'Unknown') as feature, COUNT(DISTINCT d.psid) as count
+            FROM public.user_uploaded_document_details d
+            LEFT JOIN public.table_warden w ON d.psid = w.psid
+            {where_clause}
+            GROUP BY COALESCE(d.feature, 'Unknown');
+        """
+        cur.execute(query, tuple(params))
+        return {row[0].lower(): row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"error fetching user_by_feature data: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
+def get_user_by_market_data(filters: dict):
+    conn = getconn()
+    cur = conn.cursor()
+    try:
+        where_clause = " WHERE w.date IS NOT NULL"
+        params = []
+        
+        if filters.get("start_time"):
+            where_clause += " AND w.date >= %s"
+            params.append(filters["start_time"])
+        if filters.get("end_time"):
+            where_clause += " AND w.date <= %s"
+            params.append(filters["end_time"])
+        if filters.get("journey"):
+            where_clause += " AND d.mljourney = ANY(%s)"
+            params.append(filters["journey"])
+        if filters.get("market"):
+            where_clause += " AND w.market = ANY(%s)"
+            params.append(filters["market"])
+        if filters.get("feature"):
+            where_clause += " AND d.feature = ANY(%s)"
+            params.append(filters["feature"])
+        if filters.get("doctype"):
+            where_clause += " AND d.doctype_code = ANY(%s)"
+            params.append(filters["doctype"])
+
+        query = f"""
+            SELECT COALESCE(w.market, 'Unknown') as market, COUNT(DISTINCT w.psid) as count
+            FROM public.table_warden w
+            LEFT JOIN public.user_uploaded_document_details d ON w.psid = d.psid
+            {where_clause}
+            GROUP BY COALESCE(w.market, 'Unknown');
+        """
+        cur.execute(query, tuple(params))
+        return {row[0].lower(): row[1] for row in cur.fetchall()}
+    except Exception as e:
+        logger.error(f"error fetching user_by_market data: {e}")
+        return None
+    finally:
+        cur.close()
+        conn.close()
+
+
 def get_summary_report(report_type: str, start_time: Optional[str], end_time: Optional[str], page: Optional[int] = None, records_per_page: Optional[int] = None):
     """
-    Fetches the summary report stats matching the original get_user_stats code structure.
-    Pagination parameters are dynamically applied only when report_type is 'detailed_view'.
+    Fetches unconditionally paginated summaries matching the original get_user_stats matrix format exactly.
     """
     conn = getconn()
     cur = conn.cursor()
@@ -17,26 +208,31 @@ def get_summary_report(report_type: str, start_time: Optional[str], end_time: Op
             where_clause += " AND end_time <= %s"
             params.append(end_time)
             
-        # Get total record count matching the filters
         count_query = f"SELECT COUNT(*) FROM public.user_uploaded_document_details {where_clause};"
         cur.execute(count_query, tuple(params))
         total_records = cur.fetchone()[0]
         
-        # Build base selection query
+        # Matches original column layouts precisely
         data_query = f"""
             SELECT 
-                psid, 
-                COALESCE(mljourney, 'Unknown') as journey, 
-                COALESCE(feature, 'Unknown') as feature, 
-                COALESCE(doctype_code, 'Unknown') as doctype,
-                created_at
+                COALESCE(mljourney, 'Unknown') as mljourney,
+                COALESCE(feature, 'Unknown') as feature,
+                COALESCE(department, 'Unknown') as department,
+                psid,
+                created_at,
+                doc_name,
+                status,
+                rejection_reason,
+                doc_id,
+                doctype_code,
+                start_time,
+                end_time
             FROM public.user_uploaded_document_details
             {where_clause}
             ORDER BY created_at DESC
         """
         
-        # Apply pagination constraints exclusively for detailed_view
-        if report_type == "detailed_view" and page is not None and records_per_page is not None:
+        if page is not None and records_per_page is not None:
             offset = (page - 1) * records_per_page
             data_query += " LIMIT %s OFFSET %s;"
             data_params = params + [records_per_page, offset]
@@ -47,44 +243,128 @@ def get_summary_report(report_type: str, start_time: Optional[str], end_time: Op
         cur.execute(data_query, tuple(data_params))
         rows = cur.fetchall()
         
-        summary_list = []
+        records_list = []
         for row in rows:
-            summary_list.append({
-                "psid": row[0],
-                "journey": row[1],
-                "feature": row[2],
-                "doctype": row[3],
-                "created_at": row[4].strftime("%Y-%m-%d %H:%M:%S") if row[4] else None
+            records_list.append({
+                "mljourney": row[0],
+                "feature": row[1],
+                "department": row[2],
+                "psid": row[3],
+                "created_at": row[4].strftime("%Y-%m-%d %H:%M:%S") if row[4] else None,
+                "doc_name": row[5],
+                "status": row[6],
+                "rejection_reason": row[7],
+                "doc_id": row[8],
+                "doctype_code": row[9],
+                "start_time": row[10],
+                "end_time": row[11]
             })
             
-        # Format matching the original structural return schema
         result = {
             "total_records": total_records,
-            "report_type": report_type,
-            "records": summary_list
+            "report_type": report_type.lower(),
+            "records": records_list
         }
         
-        if report_type == "detailed_view":
+        if page is not None and records_per_page is not None:
             result["current_page"] = page
             result["records_per_page"] = records_per_page
             
         return result
         
     except Exception as e:
-        logger.error(f"Error in get_summary_report: {e}")
+        logger.error(f"error in get_summary_report: {e}")
         return None
     finally:
         cur.close()
         conn.close()
 
 
-
-
 from fastapi import Header, Query, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from typing import Optional
-from util.db_handler import get_summary_report
+from typing import Optional, List
+from util.db_handler import (
+    get_user_adoption_by_year,
+    get_user_by_journey_data,
+    get_user_by_feature_data,
+    get_user_by_market_data,
+    get_summary_report
+)
+
+@UserstatsServer.get("/user_adoption", status_code=status.HTTP_200_OK)
+async def view_user_adoption(
+    year: str = Query(...),
+    DCREST_JWT_TOKEN: str = Header()
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    data = get_user_adoption_by_year(year)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"user_adoption": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile user adoption data"}, status_code=500)
+
+
+@UserstatsServer.get("/user_by_journey", status_code=status.HTTP_200_OK)
+async def view_user_by_journey(
+    DCREST_JWT_TOKEN: str = Header(),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    journey: Optional[List[str]] = Query(None),
+    market: Optional[List[str]] = Query(None),
+    feature: Optional[List[str]] = Query(None),
+    doctype: Optional[List[str]] = Query(None)
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
+    data = get_user_by_journey_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"user_by_journey": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile journey analytics"}, status_code=500)
+
+
+@UserstatsServer.get("/user_by_feature", status_code=status.HTTP_200_OK)
+async def view_user_by_feature(
+    DCREST_JWT_TOKEN: str = Header(),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    journey: Optional[List[str]] = Query(None),
+    market: Optional[List[str]] = Query(None),
+    feature: Optional[List[str]] = Query(None),
+    doctype: Optional[List[str]] = Query(None)
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
+    data = get_user_by_feature_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"user_by_feature": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile feature analytics"}, status_code=500)
+
+
+@UserstatsServer.get("/user_by_market", status_code=status.HTTP_200_OK)
+async def view_user_by_market(
+    DCREST_JWT_TOKEN: str = Header(),
+    start_time: Optional[str] = Query(None),
+    end_time: Optional[str] = Query(None),
+    journey: Optional[List[str]] = Query(None),
+    market: Optional[List[str]] = Query(None),
+    feature: Optional[List[str]] = Query(None),
+    doctype: Optional[List[str]] = Query(None)
+):
+    if not auth(DCREST_JWT_TOKEN):
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
+        
+    filters = {"start_time": start_time, "end_time": end_time, "journey": journey, "market": market, "feature": feature, "doctype": doctype}
+    data = get_user_by_market_data(filters)
+    if data is not None:
+        return jsonable_encoder({"status": "success", "data": {"user_by_market": data}})
+    return JSONResponse(content={"status": "error", "message": "Failed to compile market analytics"}, status_code=500)
+
 
 @UserstatsServer.get("/view_summary", status_code=status.HTTP_200_OK)
 async def view_summary(
@@ -96,20 +376,7 @@ async def view_summary(
     DCREST_JWT_TOKEN: str = Header()
 ):
     if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(
-            content={"error": "Invalid token"}, 
-            status_code=status.HTTP_401_UNAUTHORIZED
-        )
-        
-    # Guardrail validation for detailed report parameters
-    if report_type == "detailed_view" and (page is None or records is None):
-        return JSONResponse(
-            content={
-                "status": "error", 
-                "message": "Parameters 'page' and 'records' are required for detailed_view report type."
-            },
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
+        return JSONResponse(content={"error": "Invalid token"}, status_code=status.HTTP_401_UNAUTHORIZED)
         
     try:
         data = get_summary_report(
@@ -121,15 +388,9 @@ async def view_summary(
         )
         
         if data is not None:
-            return jsonable_encoder({
-                "status": "success", 
-                "data": data
-            })
+            return jsonable_encoder({"status": "success", "data": data})
         else:
-            return JSONResponse(
-                content={"status": "error", "message": "Failed to fetch summary data"},
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return JSONResponse(content={"status": "error", "message": "Failed to fetch summary data"}, status_code=500)
     except Exception as error:
-        logger.error(f"Error in view_summary endpoint: {error}")
+        logger.error(f"error in view_summary endpoint: {error}")
         return jsonable_encoder({"status": "error", "message": str(error)})
