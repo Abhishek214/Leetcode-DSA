@@ -1,159 +1,27 @@
-pip install openpyxl
-
-import io
-import datetime
-from openpyxl import Workbook
-import base64
-from typing import Optional, List
-
-def export_summary_to_excel_b64(filters: dict) -> Optional[str]:
-    """
-    Fetches filtered summary records, builds an Excel sheet in memory,
-    and returns a base64 encoded string of the file.
-    """
-    conn = getconn()
-    cur = conn.cursor()
-    try:
-        where_clause = " WHERE d.created_at IS NOT NULL"
-        params = []
-        
-        # Apply the exact same filter criteria as view_summary
-        if filters.get("fromDate"):
-            where_clause += " AND d.start_time >= %s"
-            params.append(filters["fromDate"])
-        if filters.get("toDate"):
-            where_clause += " AND d.end_time <= %s"
-            params.append(filters["toDate"])
-        if filters.get("use_case"):
-            where_clause += " AND d.mljourney = ANY(%s)"
-            params.append(filters["use_case"])
-        if filters.get("market"):
-            where_clause += " AND w.market = ANY(%s)"
-            params.append(filters["market"])
-        if filters.get("feature"):
-            where_clause += " AND d.feature = ANY(%s)"
-            params.append(filters["feature"])
-        if filters.get("documentType"):
-            where_clause += " AND d.doctype_code = ANY(%s)"
-            params.append(filters["documentType"])
-
-        # No LIMIT/OFFSET here because export fetches all filtered records
-        query = f"""
-            SELECT 
-                COALESCE(d.mljourney, 'Unknown') as mljourney,
-                COALESCE(d.feature, 'Unknown') as feature,
-                COALESCE(d.department, 'Unknown') as department,
-                d.psid,
-                d.created_at,
-                d.doc_name,
-                d.status,
-                d.rejection_reason,
-                d.doc_id,
-                d.doctype_code,
-                d.start_time,
-                d.end_time
-            FROM public.user_uploaded_document_details d
-            LEFT JOIN public.table_warden w ON d.psid = w.psid
-            {where_clause}
-            ORDER BY d.created_at DESC;
-        """
-        cur.execute(query, tuple(params))
-        rows = cur.fetchall()
-
-        # Create Excel workbook in memory
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Detailed Summary Report"
-
-        # Define columns exactly matching the get_user_stats response schema
-        headers = [
-            "Use Case (ML Journey)", "Feature", "Department", "PSID", 
-            "Created At", "Doc Name", "Status", "Rejection Reason", 
-            "Doc ID", "Doc Type Code", "Start Time", "End Time"
-        ]
-        ws.append(headers)
-
-        # Append data rows
-        for row in rows:
-            created_at_str = row[4].strftime("%Y-%m-%d %H:%M:%S") if row[4] else None
-            ws.append([
-                row[0],  # mljourney
-                row[1],  # feature
-                row[2],  # department
-                row[3],  # psid
-                created_at_str,
-                row[5],  # doc_name
-                row[6],  # status
-                row[7],  # rejection_reason
-                row[8],  # doc_id
-                row[9],  # doctype_code
-                row[10], # start_time
-                row[11]  # end_time
-            ])
-
-        # Auto-fit column widths for a clean look
-        for col in ws.columns:
-            max_len = max(len(str(cell.value or '')) for cell in col)
-            col_letter = col[0].column_letter
-            ws.column_dimensions[col_letter].width = max(max_len + 3, 12)
-
-        # Save workbook to a byte stream buffer
-        excel_buffer = io.BytesIO()
-        wb.save(excel_buffer)
-        excel_buffer.seek(0)
-
-        # Convert bytes to base64 string
-        b64_string = base64.b64encode(excel_buffer.read()).decode('utf-8')
-        return b64_string
-
-    except Exception as e:
-        logger.error(f"error in export_summary_to_excel_b64: {e}")
+def sanitize_list_filter(filter_list):
+    """Removes UI placeholder noise like '-', '', or 'Not Available' from filters"""
+    if not filter_list:
         return None
-    finally:
-        cur.close()
-        conn.close()
+    
+    # Filter out common frontend placeholder strings
+    cleaned = [x for x in filter_list if x not in (None, "", "-", "Not Available", "UNKNOWN")]
+    
+    # If the list is now empty after cleaning, return None so the SQL WHERE clause skips it
+    return cleaned if len(cleaned) > 0 else None
 
 
 
-from fastapi import Header, status
-from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
-from util.db_handler import export_summary_to_excel_b64
+# Clean the incoming arrays before building the SQL query params
+use_case_clean = sanitize_list_filter(filters.get("use_case"))
+market_clean = sanitize_list_filter(filters.get("market"))
+feature_clean = sanitize_list_filter(filters.get("feature"))
+doctype_clean = sanitize_list_filter(filters.get("documentType"))
 
-@UserstatsServer.post("/export_summary_excel", status_code=status.HTTP_200_OK)
-async def export_summary_excel(
-    payload: AnalyticsFilterRequest,
-    DCREST_JWT_TOKEN: str = Header()
-):
-    """
-    Generates an Excel workbook containing the filtered detailed view data 
-    and returns a base64 encoded payload.
-    """
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(
-            content={"error": "Invalid token"}, 
-            status_code=status.HTTP_401_UNAUTHORIZED
-        )
-        
-    try:
-        filters = payload.model_dump(exclude_none=True)
-        base64_excel = export_summary_to_excel_b64(filters)
-        
-        if base64_excel is not None:
-            return jsonable_encoder({
-                "status": "success",
-                "data": {
-                    "file_name": f"summary_report_{datetime.datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx",
-                    "file_type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    "base64_data": base64_excel
-                }
-            })
-        else:
-            return JSONResponse(
-                content={"status": "error", "message": "Failed to compile Excel data representation"},
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
-            
-    except Exception as error:
-        logger.error(f"error in export_summary_excel endpoint: {error}")
-        return jsonable_encoder({"status": "error", "message": str(error)})
+# Then only append to your WHERE clause if the cleaned filter is NOT None
+if use_case_clean:
+    where_clause += " AND d.mljourney = ANY(%s)"
+    params.append(use_case_clean)
+    
+if market_clean:
+    where_clause += " AND w.market = ANY(%s)"
+    params.append(market_clean)
