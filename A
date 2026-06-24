@@ -1,57 +1,25 @@
-def get_user_by_journey_data(filters: dict):
-    conn = getconn()
-    cur = conn.cursor()
-    try:
-        where_clause = " WHERE d.created_at IS NOT NULL"
-        params = []
-        
-        # 1. Clean incoming list filters using your sanitizer
-        use_case_clean = sanitize_list_filter(filters.get("use_case"))
-        market_clean = sanitize_list_filter(filters.get("market"))
-        feature_clean = sanitize_list_filter(filters.get("feature"))
-        doctype_clean = sanitize_list_filter(filters.get("documentType"))
-        
-        if filters.get("fromDate"):
-            where_clause += " d.start_time >= %s"
-            params.append(filters["fromDate"])
-        if filters.get("toDate"):
-            where_clause += " AND d.end_time <= %s"
-            params.append(filters["toDate"])
-        if use_case_clean:
-            where_clause += " AND d.mljourney = ANY(%s)"
-            params.append(use_case_clean)
-        if market_clean:
-            where_clause += " AND w.market = ANY(%s)"
-            params.append(market_clean)
-        if feature_clean:
-            where_clause += " AND d.feature = ANY(%s)"
-            params.append(feature_clean)
-        if doctype_clean:
-            where_clause += " AND d.doctype_code = ANY(%s)"
-            params.append(doctype_clean)
-
-        query = f"""
-            SELECT COALESCE(d.mljourney, 'Unknown') as journey, COUNT(DISTINCT d.psid) as count
-            FROM public.user_uploaded_document_details d
-            LEFT JOIN public.table_warden w ON d.psid = w.psid
-            {where_clause}
-            GROUP BY COALESCE(d.mljourney, 'Unknown');
-        """
-        
         # ========================================================
-        # CRITICAL: PRINT THE FINAL COMPILED QUERY HERE
+        # CROSS-DRIVER DEBUG: PRINT THE FINAL COMPILED QUERY
         # ========================================================
-        final_query = cur.mogrify(query, tuple(params)).decode('utf-8')
-        print("\n=== DEBUG: EXECUTING FINAL POSTGRES QUERY ===")
-        print(final_query)
-        print("=============================================\n")
+        try:
+            debug_query = query
+            # Safely replace the parameter flags sequentially for visual debugging
+            for p in params:
+                # Convert lists to SQL Array format lookalikes for visualization
+                if isinstance(p, list):
+                    val_str = f"ARRAY{str(p)}"
+                elif isinstance(p, str):
+                    val_str = f"'{p}'"
+                else:
+                    val_str = str(p)
+                debug_query = debug_query.replace("%s", val_str, 1)
+                
+            print("\n=== DEBUG: EXECUTING FINAL POSTGRES QUERY ===")
+            print(debug_query.strip())
+            print("=============================================\n")
+        except Exception as debug_err:
+            print(f"\n[Debug Logger Error]: Could not render mock query query: {debug_err}\n")
         # ========================================================
 
+        # Execute as normal
         cur.execute(query, tuple(params))
-        return {row[0].lower(): row[1] for row in cur.fetchall()}
-    except Exception as e:
-        logger.error(f"error fetching user_by_journey data: {e}")
-        return None
-    finally:
-        cur.close()
-        conn.close()
