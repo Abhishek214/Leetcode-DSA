@@ -1,57 +1,40 @@
-import os
-import requests
-
-def test_excel_export():
-    # 1. Configuration
-    # Replace with your actual target environment base URL if needed
-    URL = "https://dcrest-internal-uat.uk.hsbc/dcrest-userstats-service/userstats/export-excel"
-    
-    # Replace this string with a valid test JWT token
-    JWT_TOKEN = "YOUR_VALID_DCREST_JWT_TOKEN_HERE" 
-    
-    # Output path for the saved file
-    output_filename = "downloaded_summary_report.xlsx"
-
-    # 2. Setup Headers and Query Parameters
-    headers = {
-        "DCREST-JWT-TOKEN": JWT_TOKEN,
-        "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    }
-    
-    # Matching your endpoint's query structure
-    params = {
-        "report_type": "summary",
-        # Add optional filter arrays if you want to test them:
-        # "market": ["HK"],
-        # "use_case": ["HKBBPM"]
-    }
-
-    print(f"Connecting to: {URL}...")
-    
-    try:
-        # 3. Make the GET request
-        response = requests.get(URL, headers=headers, params=params, timeout=30)
+export const downloadUserStatExcel = async (data) => {
+    try {
+        const user = useLoginStore.getState().user;
         
-        print(f"Server Response Code: {response.status_code}")
-        
-        # 4. Handle Response
-        if response.status_code == 200:
-            # Save the raw binary content to a file
-            with open(output_filename, "wb") as f:
-                f.write(response.content)
-            
-            print(f"✅ Success! File downloaded and saved as: {os.path.abspath(output_filename)}")
-            print(f"File Size: {len(response.content) / 1024:.2f} KB")
-            
-        elif response.status_code == 401:
-            print("❌ Authentication Error: The DCREST_JWT_TOKEN provided was rejected.")
-            print(response.text)
-        else:
-            print(f"❌ Failed to download file. Status Code: {response.status_code}")
-            print("Response text snippet:", response.text[:500])
-            
-    except requests.exceptions.RequestException as e:
-        print(f"❌ Network or Connection Error occurred: {e}")
+        // 1. Fire the post request (Added missing await)
+        const response = await fetch(
+            "https://dcrest-internal-uat.uk.hsbc/dcrest-userstats-service/userstats/export-excel",
+            {
+                method: "POST",
+                body: JSON.stringify(data),
+                headers: {
+                    "DCREST-JWT-TOKEN": user.access_token,
+                    "Content-Type": "application/json",
+                    "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    // Content-Disposition removed from here successfully
+                }
+            }
+        );
 
-if __name__ == "__main__":
-    test_excel_export()
+        if (!response.ok) throw new Error("Network response was not ok");
+
+        // 2. Convert response stream directly to a blob
+        const blob = await response.blob();
+        
+        // 3. Programmatically trigger the browser download anchor
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = "summary_report.xlsx"; // Fallback client filename
+        document.body.appendChild(a);
+        a.click();
+        
+        // 4. Cleanup memory references
+        a.remove();
+        window.URL.revokeObjectURL(url);
+
+    } catch (error) {
+        console.error("Excel download failed:", error);
+    }
+};
