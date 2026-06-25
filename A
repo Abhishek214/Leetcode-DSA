@@ -1,84 +1,57 @@
-def execute_raw_admin_query(sql_query: str) -> dict:
-    """
-    Executes an arbitrary administrative SQL query. 
-    Automatically commits modifications or returns selected rows.
-    """
-    conn = getconn()
-    cur = conn.cursor()
+import os
+import requests
+
+def test_excel_export():
+    # 1. Configuration
+    # Replace with your actual target environment base URL if needed
+    URL = "https://dcrest-internal-uat.uk.hsbc/dcrest-userstats-service/userstats/export-excel"
+    
+    # Replace this string with a valid test JWT token
+    JWT_TOKEN = "YOUR_VALID_DCREST_JWT_TOKEN_HERE" 
+    
+    # Output path for the saved file
+    output_filename = "downloaded_summary_report.xlsx"
+
+    # 2. Setup Headers and Query Parameters
+    headers = {
+        "DCREST-JWT-TOKEN": JWT_TOKEN,
+        "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }
+    
+    # Matching your endpoint's query structure
+    params = {
+        "report_type": "summary",
+        # Add optional filter arrays if you want to test them:
+        # "market": ["HK"],
+        # "use_case": ["HKBBPM"]
+    }
+
+    print(f"Connecting to: {URL}...")
+    
     try:
-        cur.execute(sql_query)
+        # 3. Make the GET request
+        response = requests.get(URL, headers=headers, params=params, timeout=30)
         
-        # Check if the query returns rows (e.g., SELECT)
-        if cur.description is not None:
-            columns = [desc[0] for desc in cur.description]
-            rows = cur.fetchall()
-            results = [dict(zip(columns, row)) for row in rows]
-            return {
-                "type": "SELECT",
-                "row_count": len(results),
-                "data": results
-            }
+        print(f"Server Response Code: {response.status_code}")
+        
+        # 4. Handle Response
+        if response.status_code == 200:
+            # Save the raw binary content to a file
+            with open(output_filename, "wb") as f:
+                f.write(response.content)
+            
+            print(f"✅ Success! File downloaded and saved as: {os.path.abspath(output_filename)}")
+            print(f"File Size: {len(response.content) / 1024:.2f} KB")
+            
+        elif response.status_code == 401:
+            print("❌ Authentication Error: The DCREST_JWT_TOKEN provided was rejected.")
+            print(response.text)
         else:
-            # Query was a modification statement (UPDATE, INSERT, DELETE)
-            conn.commit()
-            return {
-                "type": "WRITE/MODIFICATION",
-                "row_count": cur.rowcount,
-                "data": []
-            }
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Admin raw query execution failed: {e}")
-        raise e
-    finally:
-        cur.close()
-        conn.close()
+            print(f"❌ Failed to download file. Status Code: {response.status_code}")
+            print("Response text snippet:", response.text[:500])
+            
+    except requests.exceptions.RequestException as e:
+        print(f"❌ Network or Connection Error occurred: {e}")
 
-
-
-from pydantic import BaseModel
-from fastapi import Header, status
-from fastapi.responses import JSONResponse
-from util.db_handler import execute_raw_admin_query
-
-# Request payload schema
-class AdminQueryRequest(BaseModel):
-    query: str
-
-@UserstatsServer.post("/admin/execute-raw-query", status_code=status.HTTP_200_OK)
-async def run_admin_sql(
-    payload: AdminQueryRequest,
-    DCREST_JWT_TOKEN: str = Header()
-):
-    """
-    Administrative gateway to execute raw SQL queries on the database instance.
-    """
-    if not auth(DCREST_JWT_TOKEN):
-        return JSONResponse(
-            content={"error": "Invalid token"}, 
-            status_code=status.HTTP_401_UNAUTHORIZED
-        )
-        
-    if not payload.query.strip():
-        return JSONResponse(
-            content={"status": "error", "message": "SQL query payload cannot be blank"},
-            status_code=status.HTTP_400_BAD_REQUEST
-        )
-        
-    try:
-        execution_report = execute_raw_admin_query(payload.query)
-        return {
-            "status": "success",
-            "report": execution_report
-        }
-    except Exception as error:
-        return JSONResponse(
-            content={"status": "error", "message": str(error)},
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR
-        )
-
-
-
-{
-  "query": "UPDATE public.table_warden SET market = 'HK' WHERE LOWER(journey) = 'hkbbpm';"
-}
+if __name__ == "__main__":
+    test_excel_export()
