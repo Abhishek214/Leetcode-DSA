@@ -1,83 +1,48 @@
-#// tweet: Verification for report download extraction processing pipelines
+#// tweet: What this Release is for: This release adds market and tracking metrics to document details with automatic runtime toggles
 #// ticketId: DCREST-5262
 #// currentVersion: 1.0.75
 
 JIRA = "DCREST-5262"
 
-from unittest.mock import MagicMock, patch
-import io
+from unittest.mock import MagicMock
 import util.db_handler as db_handler
 from dcrest_logger.logger import logger
 
-def test_export_excel_stream_success():
-    """
-    Verifies that the export engine fetches data, populates an excel workbook,
-    and returns a readable binary stream pointer positioned at index 0.
-    """
-    mock_filters = {
-        "report_type": "summary",
-        "market": ["HK"],
-        "use_case": ["HKBBPM"]
-    }
+def test_alter_table_executes_and_commits():
+    mock_cur = MagicMock()
+    mock_conn = MagicMock()
     
-    # Mock output buffer to mimic an in-memory file write
-    fake_buffer = io.BytesIO()
+    # Force mock to return None to simulate that the column does not exist yet (Toggle is ON)
+    mock_cur.fetchone.return_value = None
     
-    # Patch the internal workspace where your data engine compiles rows
-    with patch('util.db_handler.getconn') as mock_getconn:
-        mock_conn = MagicMock()
-        mock_cur = MagicMock()
-        mock_getconn.return_value = mock_conn
-        mock_conn.cursor.return_value = mock_cur
-        
-        # Simulate a mock database row dataset matching your table schemas
-        mock_cur.fetchall.return_value = [
-            (1, "test_file.pdf", "HK", "HKBBPM", "Warden", "SYSTEM", "2026-06-25")
-        ]
-        # Simulate column descriptions
-        mock_cur.description = [
-            ("id",), ("filename",), ("market",), ("mljourney",), 
-            ("feature",), ("department",), ("created_at",)
-        ]
+    db_handler.alter_table(mock_conn, mock_cur)
+    
+    # 1. Confirms 3 executions: 1 for schema check, 1 for alter table, 1 for backfill update
+    assert mock_cur.execute.call_count == 3
+    
+    # 2. Confirms both phases committed successfully
+    assert mock_conn.commit.call_count == 2
+    assert mock_conn.rollback.call_count == 0
 
-        # Invoke the database stream function
-        result_buffer = db_handler.export_summary_to_excel_stream(mock_filters)
-        
-        # 1. Ensure the return object is a valid memory stream
-        assert isinstance(result_buffer, io.BytesIO)
-        
-        # 2. Crucial Check: Ensure the buffer stream was rewound to position 0 for consumption
-        assert result_buffer.tell() == 0
-        
-        logger.info("✅ Export pipeline stream structure verified successfully.")
-
-def test_export_excel_stream_empty_handling():
-    """
-    Ensures that if no data filters match, the system handles it gracefully 
-    without throwing a breakdown exception.
-    """
-    mock_filters = {"report_type": "summary", "market": ["INVALID_MK"]}
+def test_alter_table_on_exception_rolls_back():
+    mock_cur = MagicMock()
+    mock_conn = MagicMock()
     
-    with patch('util.db_handler.getconn') as mock_getconn:
-        mock_conn = MagicMock()
-        mock_cur = MagicMock()
-        mock_getconn.return_value = mock_conn
-        mock_conn.cursor.return_value = mock_cur
+    # Force mock to return None so it gets past the toggle block, but crashes on the ALTER statement
+    mock_cur.fetchone.return_value = None
+    mock_cur.execute.side_effect = [None, Exception("boom")] # First call (check) succeeds, second call (alter) crashes
+    
+    try:
+        db_handler.alter_table(mock_conn, mock_cur)
+    except Exception:
+        pass
         
-        # Return nothing from DB
-        mock_cur.fetchall.return_value = []
-        
-        result_buffer = db_handler.export_summary_to_excel_stream(mock_filters)
-        
-        # Verify it still yields a valid structural wrapper file instead of crashing
-        assert result_buffer is not None
-        logger.info("✅ Empty query fallback state handled gracefully.")
+    # Verify execution stops at the failure point during Phase 1
+    assert mock_cur.execute.call_count == 2
+    assert mock_conn.commit.call_count == 0
+    mock_conn.rollback.assert_called_once()
 
 if __name__ == "__main__":
-    try:
-        test_export_excel_stream_empty_handling()
-        test_export_excel_stream_success()
-        logger.info(f"✅ Pvt passed for {JIRA}")
-    except AssertionError as err:
-        logger.error(f"❌ Pvt failed validation assertions for {JIRA}")
-        raise err
+    test_alter_table_on_exception_rolls_back()
+    test_alter_table_executes_and_commits()
+    logger.info(f"✅ Pvt passed for {JIRA}")
