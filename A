@@ -1,98 +1,42 @@
-#// tweet: What this Release is for: This release adds market and tracking metrics to document details with automatic runtime toggles
-#// ticketId: DCREST-5262
-#// currentVersion: 1.0.75
+from contextlib import asynccontextmanager
+from fastapi import FastAPI
+from util.db_handler import run_database_migration
 
-JIRA = "DCREST-5262"
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # This runs the moment the server process initializes
+    run_database_migration()
+    yield
+    # Any shutdown cleanup goes here
 
-from unittest.mock import MagicMock
-import util.db_handler as db_handler
-from dcrest_logger.logger import logger
-
-def test_alter_table_executes_and_commits():
-    mock_cur = MagicMock()
-    mock_conn = MagicMock()
-    
-    # Force mock to return None to simulate that the column does not exist yet (Toggle is ON)
-    mock_cur.fetchone.return_value = None
-    
-    db_handler.alter_table(mock_conn, mock_cur)
-    
-    # 1. Confirms 3 executions: 1 for schema check, 1 for alter table, 1 for backfill update
-    assert mock_cur.execute.call_count == 3
-    
-    # 2. Confirms both phases committed successfully
-    assert mock_conn.commit.call_count == 2
-    assert mock_conn.rollback.call_count == 0
-
-def test_alter_table_on_exception_rolls_back():
-    mock_cur = MagicMock()
-    mock_conn = MagicMock()
-    
-    # Force mock to return None so it gets past the toggle block, but crashes on the ALTER statement
-    mock_cur.fetchone.return_value = None
-    mock_cur.execute.side_effect = [None, Exception("boom")] # First call (check) succeeds, second call (alter) crashes
-    
-    try:
-        db_handler.alter_table(mock_conn, mock_cur)
-    except Exception:
-        pass
-        
-    # Verify execution stops at the failure point during Phase 1
-    assert mock_cur.execute.call_count == 2
-    assert mock_conn.commit.call_count == 0
-    mock_conn.rollback.assert_called_once()
-
-if __name__ == "__main__":
-    test_alter_table_on_exception_rolls_back()
-    test_alter_table_executes_and_commits()
-    logger.info(f"✅ Pvt passed for {JIRA}")
+app = FastAPI(lifespan=lifespan)
 
 
-
-def alter_table(conn, cur):
+def run_database_migration():
     """
-    Idempotent two-phase migration with an automated schema-presence check 
-    acting as a permanent toggle to prevent re-execution on server restarts.
+    Called by Application.py on startup. Fetches a real connection,
+    runs the toggleable migration, and safely closes the database handles.
     """
+    conn = None
+    cur = None
     try:
-        # Check if the market column already exists in the target table
-        cur.execute("""
-            SELECT 1 
-            FROM information_schema.columns 
-            WHERE table_name = 'user_uploaded_document_details' 
-              AND column_name = 'market' 
-            LIMIT 1;
-        """)
-        migration_already_run = cur.fetchone() is not None
+        logger.info("Connecting to the physical database for startup migration check...")
         
-        # AUTOMATIC TOGGLE OFF: If columns are present, skip everything safely
-        if migration_already_run:
-            logger.info("ℹ️ Tracking columns already exist. Migration and backfill toggle is OFF.")
-            return
-
-        logger.info("🚀 Toggle is ON: Initializing Phase 1 (Table alterations)...")
-        alter_query = """
-            ALTER TABLE public.user_uploaded_document_details 
-            ADD COLUMN market VARCHAR(50), 
-            ADD COLUMN sources_ref_id VARCHAR(100), 
-            ADD COLUMN session_doc_id VARCHAR(100), 
-            ADD COLUMN session_id VARCHAR(100);
-        """
-        cur.execute(alter_query)
-        conn.commit() 
-        logger.info("Phase 1 complete: Columns committed to database catalog.")
+        # ⚠️ REPLACE 'get_db_connection()' WITH YOUR ACTUAL DB POOL OR FACTORY FUNCTION
+        # Example: conn = your_connection_pool.getconn() or standard psycopg2.connect()
+        conn = get_db_connection() 
+        cur = conn.cursor()
         
-        logger.info("🚀 Initializing Phase 2 (Data backfill running ONCE)...")
-        update_query = """
-            UPDATE public.user_uploaded_document_details 
-            SET market = 'HK' 
-            WHERE LOWER(mljourney) = 'hkbbpm';
-        """
-        cur.execute(update_query)
-        conn.commit()
-        logger.info(f"Phase 2 complete: Backfill finished. Rows updated: {cur.rowcount}")
+        # Pass the live connection and cursor to your migration function
+        alter_table(conn, cur)
         
     except Exception as e:
-        conn.rollback()
-        logger.error(f"Migration sequence broken, transaction rolled back safely: {e}")
-        raise e
+        # We catch the exception here so a database connection failure 
+        # doesn't completely crash and brick your entire server startup sequence.
+        logger.error(f"❌ Startup migration execution failed: {e}")
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
+        logger.info("Database migration handles cleaned up successfully.")
