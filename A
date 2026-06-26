@@ -1,42 +1,48 @@
-from contextlib import asynccontextmanager
-from fastapi import FastAPI
-from util.db_handler import run_database_migration
+#// tweet: What this Release is for: This release adds market and tracking metrics to document details with automatic runtime toggles
+#// ticketId: DCREST-5262
+#// currentVersion: 1.0.75
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # This runs the moment the server process initializes
-    run_database_migration()
-    yield
-    # Any shutdown cleanup goes here
+JIRA = "DCREST-5262"
 
-app = FastAPI(lifespan=lifespan)
+from unittest.mock import MagicMock
+import util.db_handler as db_handler
+from dcrest_logger.logger import logger
 
+def test_alter_table_executes_and_commits():
+    mock_cur = MagicMock()
+    mock_conn = MagicMock()
+    
+    # Force fetchone() to return None so the script thinks the column isn't there yet (Toggle is ON)
+    mock_cur.fetchone.return_value = None
+    
+    db_handler.alter_table(mock_conn, mock_cur)
+    
+    # 1. Confirms 3 executions: 1 for schema check, 1 for alter table, 1 for backfill update
+    assert mock_cur.execute.call_count == 3
+    
+    # 2. Confirms both execution phases called commit() successfully
+    assert mock_conn.commit.call_count == 2
+    assert mock_conn.rollback.call_count == 0
 
-def run_database_migration():
-    """
-    Called by Application.py on startup. Fetches a real connection,
-    runs the toggleable migration, and safely closes the database handles.
-    """
-    conn = None
-    cur = None
+def test_alter_table_on_exception_rolls_back():
+    mock_cur = MagicMock()
+    mock_conn = MagicMock()
+    
+    # First fetchone() returns None (passes toggle check), but the subsequent ALTER execution fails
+    mock_cur.fetchone.return_value = None
+    mock_cur.execute.side_effect = [None, Exception("boom"), None] 
+    
     try:
-        logger.info("Connecting to the physical database for startup migration check...")
+        db_handler.alter_table(mock_conn, mock_cur)
+    except Exception:
+        pass
         
-        # ⚠️ REPLACE 'get_db_connection()' WITH YOUR ACTUAL DB POOL OR FACTORY FUNCTION
-        # Example: conn = your_connection_pool.getconn() or standard psycopg2.connect()
-        conn = get_db_connection() 
-        cur = conn.cursor()
-        
-        # Pass the live connection and cursor to your migration function
-        alter_table(conn, cur)
-        
-    except Exception as e:
-        # We catch the exception here so a database connection failure 
-        # doesn't completely crash and brick your entire server startup sequence.
-        logger.error(f"❌ Startup migration execution failed: {e}")
-    finally:
-        if cur:
-            cur.close()
-        if conn:
-            conn.close()
-        logger.info("Database migration handles cleaned up successfully.")
+    # Verify execution stopped exactly at the failure point during Phase 1 (Check query + Failed Alter query = 2)
+    assert mock_cur.execute.call_count == 2
+    assert mock_conn.commit.call_count == 0
+    mock_conn.rollback.assert_called_once()
+
+if __name__ == "__main__":
+    test_alter_table_on_exception_rolls_back()
+    test_alter_table_executes_and_commits()
+    logger.info(f"✅ Pvt passed for {JIRA}")
