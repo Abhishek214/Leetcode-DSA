@@ -1,79 +1,83 @@
-def alter_table(conn, cur):
-    """
-    Idempotent migration to add tracking columns to user_uploaded_document_details
-    and backfill existing data based on the mljourney code.
-    """
-    try:
-        logger.info("Initializing table structural alterations...")
-        
-        # 1. Combine all table columns into a single optimized ALTER query
-        alter_query = """
-            ALTER TABLE public.user_uploaded_document_details 
-            ADD COLUMN IF NOT EXISTS market VARCHAR(50), 
-            ADD COLUMN IF NOT EXISTS sources_ref_id VARCHAR(100), 
-            ADD COLUMN IF NOT EXISTS session_doc_id VARCHAR(100), 
-            ADD COLUMN IF NOT EXISTS session_id VARCHAR(100);
-        """
-        cur.execute(alter_query)
-        logger.info("Successfully added tracking columns (or confirmed they already exist).")
-        
-        # 2. Backfill the market column data based on your rules
-        update_query = """
-            UPDATE public.user_uploaded_document_details 
-            SET market = 'HK' 
-            WHERE LOWER(mljourney) = 'hkbbpm';
-        """
-        cur.execute(update_query)
-        logger.info(f"Successfully completed backfill optimization. Rows updated: {cur.rowcount}")
-        
-        # Commit the transaction block safely
-        conn.commit()
-        logger.info("All changes committed successfully across the active environment state.")
-        
-    except Exception as e:
-        conn.rollback()
-        logger.error(f"Migration sequence broken, transaction rolled back safely: {e}")
-        raise e
-
-
-
-#// tweet: What this Release is for: This release adds market and tracking metrics to document details
+#// tweet: Verification for report download extraction processing pipelines
 #// ticketId: DCREST-5262
 #// currentVersion: 1.0.75
 
 JIRA = "DCREST-5262"
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
+import io
 import util.db_handler as db_handler
 from dcrest_logger.logger import logger
 
-def test_alter_table_executes_and_commits():
-    mock_cur = MagicMock()
-    mock_conn = MagicMock()
+def test_export_excel_stream_success():
+    """
+    Verifies that the export engine fetches data, populates an excel workbook,
+    and returns a readable binary stream pointer positioned at index 0.
+    """
+    mock_filters = {
+        "report_type": "summary",
+        "market": ["HK"],
+        "use_case": ["HKBBPM"]
+    }
     
-    # Run structural alteration migration logic
-    db_handler.alter_table(mock_conn, mock_cur)
+    # Mock output buffer to mimic an in-memory file write
+    fake_buffer = io.BytesIO()
     
-    # Confirms both the ALTER and UPDATE statements were run sequentially
-    assert mock_cur.execute.call_count == 2
-    mock_conn.commit.assert_called_once()
-
-def test_alter_table_on_exception_rolls_back():
-    mock_cur = MagicMock()
-    mock_cur.execute.side_effect = Exception("boom")
-    mock_conn = MagicMock()
-    
-    try:
-        db_handler.alter_table(mock_conn, mock_cur)
-    except Exception:
-        pass
+    # Patch the internal workspace where your data engine compiles rows
+    with patch('util.db_handler.getconn') as mock_getconn:
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_getconn.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cur
         
-    # Validates that any failure at step 1 triggers a safety fallback rollback
-    assert mock_cur.execute.call_count == 1
-    mock_conn.rollback.assert_called_once()
+        # Simulate a mock database row dataset matching your table schemas
+        mock_cur.fetchall.return_value = [
+            (1, "test_file.pdf", "HK", "HKBBPM", "Warden", "SYSTEM", "2026-06-25")
+        ]
+        # Simulate column descriptions
+        mock_cur.description = [
+            ("id",), ("filename",), ("market",), ("mljourney",), 
+            ("feature",), ("department",), ("created_at",)
+        ]
 
-# Execution pipeline blocks
+        # Invoke the database stream function
+        result_buffer = db_handler.export_summary_to_excel_stream(mock_filters)
+        
+        # 1. Ensure the return object is a valid memory stream
+        assert isinstance(result_buffer, io.BytesIO)
+        
+        # 2. Crucial Check: Ensure the buffer stream was rewound to position 0 for consumption
+        assert result_buffer.tell() == 0
+        
+        logger.info("✅ Export pipeline stream structure verified successfully.")
+
+def test_export_excel_stream_empty_handling():
+    """
+    Ensures that if no data filters match, the system handles it gracefully 
+    without throwing a breakdown exception.
+    """
+    mock_filters = {"report_type": "summary", "market": ["INVALID_MK"]}
+    
+    with patch('util.db_handler.getconn') as mock_getconn:
+        mock_conn = MagicMock()
+        mock_cur = MagicMock()
+        mock_getconn.return_value = mock_conn
+        mock_conn.cursor.return_value = mock_cur
+        
+        # Return nothing from DB
+        mock_cur.fetchall.return_value = []
+        
+        result_buffer = db_handler.export_summary_to_excel_stream(mock_filters)
+        
+        # Verify it still yields a valid structural wrapper file instead of crashing
+        assert result_buffer is not None
+        logger.info("✅ Empty query fallback state handled gracefully.")
+
 if __name__ == "__main__":
-    test_alter_table_on_exception_rolls_back()
-    test_alter_table_executes_and_commits()
-    logger.info(f"✅ Pvt passed for {JIRA}")
+    try:
+        test_export_excel_stream_empty_handling()
+        test_export_excel_stream_success()
+        logger.info(f"✅ Pvt passed for {JIRA}")
+    except AssertionError as err:
+        logger.error(f"❌ Pvt failed validation assertions for {JIRA}")
+        raise err
