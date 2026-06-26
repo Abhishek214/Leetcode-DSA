@@ -46,3 +46,53 @@ if __name__ == "__main__":
     test_alter_table_on_exception_rolls_back()
     test_alter_table_executes_and_commits()
     logger.info(f"✅ Pvt passed for {JIRA}")
+
+
+
+def alter_table(conn, cur):
+    """
+    Idempotent two-phase migration with an automated schema-presence check 
+    acting as a permanent toggle to prevent re-execution on server restarts.
+    """
+    try:
+        # Check if the market column already exists in the target table
+        cur.execute("""
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = 'user_uploaded_document_details' 
+              AND column_name = 'market' 
+            LIMIT 1;
+        """)
+        migration_already_run = cur.fetchone() is not None
+        
+        # AUTOMATIC TOGGLE OFF: If columns are present, skip everything safely
+        if migration_already_run:
+            logger.info("ℹ️ Tracking columns already exist. Migration and backfill toggle is OFF.")
+            return
+
+        logger.info("🚀 Toggle is ON: Initializing Phase 1 (Table alterations)...")
+        alter_query = """
+            ALTER TABLE public.user_uploaded_document_details 
+            ADD COLUMN market VARCHAR(50), 
+            ADD COLUMN sources_ref_id VARCHAR(100), 
+            ADD COLUMN session_doc_id VARCHAR(100), 
+            ADD COLUMN session_id VARCHAR(100);
+        """
+        cur.execute(alter_query)
+        conn.commit() 
+        logger.info("Phase 1 complete: Columns committed to database catalog.")
+        
+        logger.info("🚀 Initializing Phase 2 (Data backfill running ONCE)...")
+        update_query = """
+            UPDATE public.user_uploaded_document_details 
+            SET market = 'HK' 
+            WHERE LOWER(mljourney) = 'hkbbpm';
+        """
+        cur.execute(update_query)
+        conn.commit()
+        logger.info(f"Phase 2 complete: Backfill finished. Rows updated: {cur.rowcount}")
+        
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Migration sequence broken, transaction rolled back safely: {e}")
+        raise e
