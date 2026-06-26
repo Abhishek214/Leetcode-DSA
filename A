@@ -1,40 +1,79 @@
-export const downloadUserStatExcel = async (data) => {
-    try {
-        const user = useLoginStore.getState().user;
+def alter_table(conn, cur):
+    """
+    Idempotent migration to add tracking columns to user_uploaded_document_details
+    and backfill existing data based on the mljourney code.
+    """
+    try:
+        logger.info("Initializing table structural alterations...")
         
-        // 1. Fire the post request (Added missing await)
-        const response = await fetch(
-            "https://dcrest-internal-uat.uk.hsbc/dcrest-userstats-service/userstats/export-excel",
-            {
-                method: "POST",
-                body: JSON.stringify(data),
-                headers: {
-                    "DCREST-JWT-TOKEN": user.access_token,
-                    "Content-Type": "application/json",
-                    "Accept": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    // Content-Disposition removed from here successfully
-                }
-            }
-        );
-
-        if (!response.ok) throw new Error("Network response was not ok");
-
-        // 2. Convert response stream directly to a blob
-        const blob = await response.blob();
+        # 1. Combine all table columns into a single optimized ALTER query
+        alter_query = """
+            ALTER TABLE public.user_uploaded_document_details 
+            ADD COLUMN IF NOT EXISTS market VARCHAR(50), 
+            ADD COLUMN IF NOT EXISTS sources_ref_id VARCHAR(100), 
+            ADD COLUMN IF NOT EXISTS session_doc_id VARCHAR(100), 
+            ADD COLUMN IF NOT EXISTS session_id VARCHAR(100);
+        """
+        cur.execute(alter_query)
+        logger.info("Successfully added tracking columns (or confirmed they already exist).")
         
-        // 3. Programmatically trigger the browser download anchor
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = "summary_report.xlsx"; // Fallback client filename
-        document.body.appendChild(a);
-        a.click();
+        # 2. Backfill the market column data based on your rules
+        update_query = """
+            UPDATE public.user_uploaded_document_details 
+            SET market = 'HK' 
+            WHERE LOWER(mljourney) = 'hkbbpm';
+        """
+        cur.execute(update_query)
+        logger.info(f"Successfully completed backfill optimization. Rows updated: {cur.rowcount}")
         
-        // 4. Cleanup memory references
-        a.remove();
-        window.URL.revokeObjectURL(url);
+        # Commit the transaction block safely
+        conn.commit()
+        logger.info("All changes committed successfully across the active environment state.")
+        
+    except Exception as e:
+        conn.rollback()
+        logger.error(f"Migration sequence broken, transaction rolled back safely: {e}")
+        raise e
 
-    } catch (error) {
-        console.error("Excel download failed:", error);
-    }
-};
+
+
+#// tweet: What this Release is for: This release adds market and tracking metrics to document details
+#// ticketId: DCREST-5262
+#// currentVersion: 1.0.75
+
+JIRA = "DCREST-5262"
+
+from unittest.mock import MagicMock
+import util.db_handler as db_handler
+from dcrest_logger.logger import logger
+
+def test_alter_table_executes_and_commits():
+    mock_cur = MagicMock()
+    mock_conn = MagicMock()
+    
+    # Run structural alteration migration logic
+    db_handler.alter_table(mock_conn, mock_cur)
+    
+    # Confirms both the ALTER and UPDATE statements were run sequentially
+    assert mock_cur.execute.call_count == 2
+    mock_conn.commit.assert_called_once()
+
+def test_alter_table_on_exception_rolls_back():
+    mock_cur = MagicMock()
+    mock_cur.execute.side_effect = Exception("boom")
+    mock_conn = MagicMock()
+    
+    try:
+        db_handler.alter_table(mock_conn, mock_cur)
+    except Exception:
+        pass
+        
+    # Validates that any failure at step 1 triggers a safety fallback rollback
+    assert mock_cur.execute.call_count == 1
+    mock_conn.rollback.assert_called_once()
+
+# Execution pipeline blocks
+if __name__ == "__main__":
+    test_alter_table_on_exception_rolls_back()
+    test_alter_table_executes_and_commits()
+    logger.info(f"✅ Pvt passed for {JIRA}")
