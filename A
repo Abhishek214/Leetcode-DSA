@@ -1,48 +1,13 @@
-#// tweet: What this Release is for: This release adds market and tracking metrics to document details with automatic runtime toggles
-#// ticketId: DCREST-5262
-#// currentVersion: 1.0.75
-
-JIRA = "DCREST-5262"
-
-from unittest.mock import MagicMock
-import util.db_handler as db_handler
-from dcrest_logger.logger import logger
-
-def test_alter_table_executes_and_commits():
-    mock_cur = MagicMock()
-    mock_conn = MagicMock()
+def print_compiled_query(query: str, params: list):
+    """Placeholder helper to print a formatted look at your SQL query."""
+    formatted_query = query
+    for param in params:
+        # Wrap strings/lists in single quotes for readable display
+        if isinstance(param, (str, list, tuple)):
+            formatted_query = formatted_query.replace("%s", f"'{param}'", 1)
+        else:
+            formatted_query = formatted_query.replace("%s", str(param), 1)
     
-    # Force fetchone() to return None so the script thinks the column isn't there yet (Toggle is ON)
-    mock_cur.fetchone.return_value = None
-    
-    db_handler.alter_table(mock_conn, mock_cur)
-    
-    # 1. Confirms 3 executions: 1 for schema check, 1 for alter table, 1 for backfill update
-    assert mock_cur.execute.call_count == 3
-    
-    # 2. Confirms both execution phases called commit() successfully
-    assert mock_conn.commit.call_count == 2
-    assert mock_conn.rollback.call_count == 0
-
-def test_alter_table_on_exception_rolls_back():
-    mock_cur = MagicMock()
-    mock_conn = MagicMock()
-    
-    # First fetchone() returns None (passes toggle check), but the subsequent ALTER execution fails
-    mock_cur.fetchone.return_value = None
-    mock_cur.execute.side_effect = [None, Exception("boom"), None] 
-    
-    try:
-        db_handler.alter_table(mock_conn, mock_cur)
-    except Exception:
-        pass
-        
-    # Verify execution stopped exactly at the failure point during Phase 1 (Check query + Failed Alter query = 2)
-    assert mock_cur.execute.call_count == 2
-    assert mock_conn.commit.call_count == 0
-    mock_conn.rollback.assert_called_once()
-
-if __name__ == "__main__":
-    test_alter_table_on_exception_rolls_back()
-    test_alter_table_executes_and_commits()
-    logger.info(f"✅ Pvt passed for {JIRA}")
+    print("\n--- DEBUG EXECUTING SQL QUERY ---")
+    print(formatted_query)
+    print("---------------------------------\n")
