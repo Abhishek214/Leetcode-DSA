@@ -1,13 +1,32 @@
-def print_compiled_query(query: str, params: list):
-    """Placeholder helper to print a formatted look at your SQL query."""
-    formatted_query = query
-    for param in params:
-        # Wrap strings/lists in single quotes for readable display
-        if isinstance(param, (str, list, tuple)):
-            formatted_query = formatted_query.replace("%s", f"'{param}'", 1)
-        else:
-            formatted_query = formatted_query.replace("%s", str(param), 1)
-    
-    print("\n--- DEBUG EXECUTING SQL QUERY ---")
-    print(formatted_query)
-    print("---------------------------------\n")
+def get_value_list():
+    conn = None
+    cur = None
+
+    try:
+        conn = getconn()
+        if conn is None:
+            logger.error("Database connection failed.")
+            return {}
+
+        cur = conn.cursor()
+
+        filters = ["mljourney", "feature", "doctype_code", "market"]
+        result = {}
+
+        for value in filters:
+            cur.execute(
+                f"SELECT DISTINCT {value} FROM public.user_uploaded_document_details;"
+            )
+            result[value] = [row[0] for row in cur.fetchall()]
+
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to fetch records: {e}")
+        return {}
+
+    finally:
+        if cur:
+            cur.close()
+        if conn:
+            conn.close()
