@@ -1,4 +1,129 @@
-if filters.get("psid"):
-    # Splits the column string at the '-' and compares only the first segment
-    where_clause += " AND SPLIT_PART(psid, '-', 1) = %s"
-    params.append(str(filters["psid"]).strip())
+business_categories = {
+        "mandates": {
+                'LabelTo_Id': {'BR': 0, 'MOM': 1, 'hkid': 2, 'passport': 3, 'nar1': 4, 'nd2a': 5, 'pancard': 6},
+                'label_map': {0: 'BR', 1: 'MOM', 2: 'hkid', 3: 'passport', 4: 'nar1', 5: 'nd2a', 6: 'pancard'},
+                "categories": {
+                        # ... keep your existing categories here ...
+                        
+                        "pancard": {
+                                "INCOME TAX DEPARTMENT": 10,
+                                "PERMANENT ACCOUNT NUMBER": 10,
+                                "GOVT. OF INDIA": 5,
+                                "GOVERNMENT OF INDIA": 5,
+                                "FATHER'S NAME": 4,
+                                r"[A-Z]{5}[0-9]{4}[A-Z]": 12
+                        }
+                }
+        }
+}
+
+
+
+
+"SPV_Fund_prospectus": {
+    "private placement memorandum": 15,
+    "offering memorandum": 15,
+    "prospectus": 15,
+    "special purpose vehicle": 12,
+    "offering circular": 12,
+    "confidential offering": 12,
+    "subscription agreement": 10,
+    "limited partnership agreement": 10,
+    "accredited investor": 8,
+    "limited partner": 8,
+    "general partner": 8,
+    "risk factors": 7,
+    "use of proceeds": 7,
+    "forward-looking statements": 6
+}
+
+
+"LEI": {
+    "legal entity identifier": 12,
+    "lei code": 10,
+    "gleif": 10,
+    "lei status": 8,
+    "jurisdiction of formation": 8,
+    "next renewal": 6
+}
+
+
+business_categories = {
+    # Existing mandates structure...
+    "mandates": { ... },
+    
+    # New CMB-KYC structure
+    "cmb-kyc": {
+        'LabelTo_Id': {'Board_Resolution': 0},
+        'label_map': {0: 'Board_Resolution'},
+        "categories": {
+            "Board_Resolution": {
+                "certified true copy": 15,
+                "meeting of the board of directors": 12,
+                "board resolution": 12,
+                "board resolutions": 12,
+                "resolution passed at": 12,
+                "resolution adopted by": 12,
+                "further resolved that": 10,
+                "resolved further that": 10,
+                "resolved that": 8,
+                "certified to be true": 8,
+                "board of directors": 5
+            }
+        }
+    }
+}
+
+folder_to_label = {
+    # ... your existing mappings ...
+    "Board Resolution": "board_resolution",
+    "Board_Resolution": "board_resolution"
+}
+
+
+
+
+
+"Aadhaar": {
+    # Primary Structural Anchors (High Weightage)
+    "GOVERNMENT OF INDIA": 12,
+    "UNIQUE IDENTIFICATION AUTHORITY OF INDIA": 12,
+    "MALE": 10,
+    "FEMALE": 10,
+    "ENROLLMENT NO": 10,
+    r"\d{4}\s\d{4}\s\d{4}": 12,
+    # Secondary Transliterations / Common Labels
+    "DOB": 5,
+    "YEAR OF BIRTH": 5,
+    "ADDRESS": 3,
+    "FATHER": 3,
+    "HELP": 2
+}
+
+# In Configurations/params.py
+
+business_categories = {
+    # ... existing categories
+    "wpb-irr": {
+        "categories": {
+            # ... existing doctypes (HKID, Passport, etc.)
+            "Aadhaar_Card": {
+                "unique identification authority of india": 15,
+                "mera aadhaar meri pehchan": 15,
+                "aadhaar": 12,
+                "government of india": 10,
+                "help@uidai.gov.in": 12,
+                "enrollment no": 10,
+                "enrolment": 8,
+                r"[0-9]{4}\s[0-9]{4}\s[0-9]{4}": 15, # Generic 12-digit pattern matching format
+                "male": 2,
+                "female": 2
+            }
+        }
+    }
+}
+
+folder_to_label = {
+    # ... existing folder mappings
+    "Aadhaar Card": "aadhaar_card"
+}
