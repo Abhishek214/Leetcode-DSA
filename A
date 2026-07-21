@@ -1,43 +1,172 @@
-# Add this new document category target to your dictionary mapping
-business_categories = {
-    "mandates": {
-        "categories": {
-            # ... your existing categories (BR, MOM, etc.) ...
-            
-            "Fund_AML_Confirmation": {
-                # High Weight: Explicit Multi-Word Structure Phrases
-                "private equity fund": 12,
-                "private equity funds": 12,
-                "sole general partner": 15,
-                "general partner": 8,
-                "limited partners": 8,
-                "pooled investment vehicles": 12,
-                
-                # High Weight: Specific Compliance Frameworks
-                "anti-money laundering": 12,
-                "aml/kyc": 15,
-                "know your customer": 12,
-                "aml program": 10,
-                "source of the funds": 12,
-                
-                # Medium Weight: Sanctions & Regulatory Entities
-                "office of foreign assets control": 10,
-                "ofac": 8,
-                "politically exposed persons": 10,
-                "peps": 8,
-                "financial action task force": 10,
-                "fatf": 8,
-                
-                # Baseline validation tokens
-                "ownership confirmation": 8,
-                "beneficial owners": 6,
-                "controlling persons": 6
-            }
+import configparser , os
+
+
+config = configparser.ConfigParser()
+config.read("Config.ini")
+business_categories={
+        "mandates":{
+                'LabelTo_Id':{'BR': 0, 'MOM': 1, 'hkid': 2, 'passport':3, 'nar1':4, 'nd2a':5, 'Constitutional_Document': 6},
+                'label_map':{0:'BR', 1:'MOM', 2:'hkid',3:'passport',4:'nar1',5:'nd2a', 6:'Constitutional_Document'},
+                "categories":{
+                        "BR":{"written":8, "writing":3,"written resolution": 11,"written resolutions":12,"further resolved that":5,
+                "resolution in writing":16,"resolutions in writing":14,"resolved that":3,
+                " resolved":5,"resolution":3},
+                        "MOM":{"minutes of a meeting":8, "meeting": 7,
+                        "minutes": 8,"minute":5,"minute book":5},
+                        "HKID":{"IDENTITY CARD": 10, "HONG KONG PERMANENT":10,
+                        "HONG KONG PERMANENT IDENTITY CARD":10,"HONG KONG IDENTITY CARD":10},
+                        "Passport": {"<": 1, ">": 1,},
+                        "NAR1":{"nar1":12,},
+                        "ND2A":{"nd2a":12,},
+                        "Constitutional_Document":{
+                            "constitution of": 15,
+                            "amended and restated constitution": 15,
+                            "memorandum and articles of association": 15,
+                            "memorandum of association": 12,
+                            "articles of association": 12,
+                            "share capital and variation of rights": 8,
+                            "calls on shares": 8,
+                            "transfer of shares": 8,
+                            "transmission of shares": 8,
+                            "forfeiture of shares": 8,
+                            "powers and duties of directors": 7,
+                            "proceedings of directors": 7,
+                            "proceedings at general meetings": 7,
+                            "interpretation": 5,
+                            "private company limited by shares": 4,
+                            "the companies act": 3
+                        },
+                        "EMAIL":{
+                             "To:\s*":1,"From:\s*":3,"Sent:\s*":4,"Subject:\s*":5,"RE:\s*":5,"Attachments:\s*":5,"Cc:\s*":4}
+                       }
+        },
+        "wpb-irr":{
+                "categories":{
+                        "HKID":{"IDENTITY CARD":12, "HONG KONG PERMANENT":10,
+                        "HONG KONG IDENTITY CARD":10,
+                        "\w*\s*[A-Z]{2,4}":10,"[A-Za-z]\d{6}\s*(\d)":10,"\w{2,4}\s*\pL{2,5}\s*\p{L}\s*\d*":7},
+                        "Passport": {"<": 1, ">": 1,},
+                        "Chinese_2_way_permit":{"生來港 澳":15,"生來港 澳 証":11,},
+                        "Driving_License":{"driving licence": 5,
+                        "driving license": 4, "driver licence": 3, "driver license": 3,
+                        "driver":6,"drivern\s":6,"licence":6,"license":6},
+                        "water_bill":{"water":15},
+                        "energy_bill":{
+                                "gas":6,"electricity":8,"energy":3,"electrical":6,
+                                "power":7,"electric":6,"kwh":6,"fuel":6},
+                        "EIDVA":{"eid&v":12, "eid&va":12,"experian reference":5},
+                        "National_Identity_card":{"IDENTITY CARD":12,"CARTE":15,"CARTE DE IDENTITATE":15,
+                        "D'IDENTITE":12,"didendite":15},
+                        "Constitutional_Document":{
+                            "constitution of": 15,
+                            "amended and restated constitution": 15,
+                            "memorandum and articles of association": 15,
+                            "memorandum of association": 12,
+                            "articles of association": 12,
+                            "share capital and variation of rights": 8,
+                            "calls on shares": 8,
+                            "transfer of shares": 8,
+                            "transmission of shares": 8,
+                            "forfeiture of shares": 8,
+                            "powers and duties of directors": 7,
+                            "proceedings of directors": 7,
+                            "proceedings at general meetings": 7,
+                            "interpretation": 5,
+                            "private company limited by shares": 4,
+                            "the companies act": 3
+                        }
+                }
         }
-    }
 }
 
-# Remember to update your folder_to_label map below it to support the new type:
-folder_to_label.update({
-    "Fund_AML_Confirmation": "fund_aml_confirm_letter"
-})
+
+folder_to_label = {
+        "BusinessRegistrationCertificate": "brdoc",
+        "Certificate Of Incumbency": "certificateofincumbency",
+        "Certificate Of Incorporation": "coidoc",
+        "Company Registry Report": "company_reg_report",
+        "Foundation Charter": "foundcharter",
+        "AOA": "artofassociation",
+        "M&A": "manda",
+        "Constitutional_Document": "constitutional_document",
+        "Annual Report":"annual_return",
+        "Org Chart":"orgchart",
+        "Proof of Business Address":"company_website_pba",
+        "Street View - Proof of Business Address":"streetview_pba",
+        "Partnership_agreement":"partnershipagreement",
+        "Form_1_AC":"coidoc",
+        "FACTA_FORM":"factaforms",
+        "Listing_Proof":"listing_proof",
+        "Passport": "passport",
+        "Driving_License": "dl",
+        "National_Identity_card": "national_identity_card",
+        "HKID":"hkid",
+        "Account_Opening_Form": "ofss",
+        "BusinessBankAccountStatements":"business_bank_acc_statements",
+        "Written Confirmation from a Firm of Lawyers": "Written_Confirmation_from_a_Firm_of_Lawyers",
+        "BR":"BR",
+        "MOM":"MOM",
+        "NAR1":"NAR1",
+        "ND2A":"ND2A",
+        "EMAIL":"EMAIL",
+        "UNKNOWN_DOCTYPE":"UNKNOWN_DOCTYPE",
+        "Chinese_2_way_permit":"Chinese_2_way_permit",
+        "energy_bill":"energy_bill",
+        "water_bill":"water_bill",
+        "EIDVA":"eidva"
+}
+
+
+def ConfigSectionMap(section,config):
+        dict1 = {}
+        options = config.options(section)
+        for option in options:
+                try:
+                        dict1[option] = config.get(section, option)
+                        if dict1[option] == -1:
+                                print("skip: %s" % option)
+                except:
+                        print("exception on %s" % option)
+                        dict1[option] = None
+        return dict1
+
+
+def read_config(file_name):
+        config = configparser.ConfigParser()
+        config.read(file_name)
+        config_dict = {}
+        for section in config.sections():
+                config_dict[section] = ConfigSectionMap(section,config)
+        return config_dict
+
+
+if os.getenv("ENV_TYPE") !=None:
+        ENV = os.getenv("ENV_TYPE").upper()
+else:
+        ENV = "DEV"
+
+
+print(f"{ENV}-environment configs were imported")
+if ENV=="DEV" or ENV is None:
+        configs = ConfigSectionMap("DEV",config)
+elif ENV=="SIT":
+        configs = ConfigSectionMap("SIT",config)
+elif ENV=="UAT":
+        configs = ConfigSectionMap("UAT",config)
+elif ENV=="PROD":
+        configs = ConfigSectionMap("PROD",config)
+elif ENV=="CONT":
+        configs = ConfigSectionMap("PROD",config)
+else:
+        configs = ConfigSectionMap("DEV",config)
+
+
+##############################################
+
+
+ssl_keyfile = configs["ssl_keyfile"]
+ssl_certfile = configs["ssl_certfile"]
+port = int(configs["port"])
+workers = int(configs["workers"])
+host = configs["host"]
+EXTRACT_ENDPOINT=configs["ocr_suite"]
