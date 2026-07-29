@@ -1,224 +1,57 @@
-import configparser
-import os
-
-config = configparser.ConfigParser()
-config.read("Config.ini")
-
-business_categories = {
-    "mandates": {
-        'LabelTo_Id': {
-            'BR': 0,
-            'MOM': 1,
-            'hkid': 2,
-            'passport': 3,
-            'nar1': 4,
-            'nd2a': 5,
-            'foundcharter': 6,
-        },
-        'label_map': {
-            0: 'BR',
-            1: 'MOM',
-            2: 'hkid',
-            3: 'passport',
-            4: 'nar1',
-            5: 'nd2a',
-            6: 'foundcharter',
-        },
-        "categories": {
-            "BR": {
-                "written": 8,
-                "writing": 3,
-                "written resolution": 11,
-                "written resolutions": 12,
-                "further resolved that": 5,
-                "resolution in writing": 16,
-                "resolutions in writing": 14,
-                "resolved that": 3,
-                " resolved": 5,
-                "resolution": 3,
-            },
-            "MOM": {
-                "minutes of a meeting": 8,
-                "meeting": 7,
-                "minutes": 8,
-                "minute": 5,
-                "minute book": 5,
-            },
-            "HKID": {
-                "IDENTITY CARD": 10,
-                "HONG KONG PERMANENT": 10,
-                "HONG KONG PERMANENT IDENTITY CARD": 10,
-                "HONG KONG IDENTITY CARD": 10,
-            },
-            "Passport": {
-                "<": 1,
-                ">": 1,
-            },
-            "NAR1": {
-                "nar1": 12,
-            },
-            "ND2A": {
-                "nd2a": 12,
-            },
-            "EMAIL": {
-                "To:\\s*": 1,
-                "From:\\s*": 3,
-                "Sent:\\s*": 4,
-                "Subject:\\s*": 5,
-                "RE:\\s*": 5,
-                "Attachments:\\s*": 5,
-                "Cc:\\s*": 4,
-            },
-            # --- Added Foundation Charter Category ---
-            "Foundation Charter": {
-                "foundation charter": 15,
-                "charter of the foundation": 15,
-                "amended and restated charter": 12,
-                "foundation objects": 10,
-                "foundations law": 10,
-                "initial capital": 8,
-                "supplementary capital": 8,
-                "qualified recipients": 8,
-                "charter": 4,
-                "founder": 3,
-            },
-        },
-    },
-    "wpb-irr": {
-        "categories": {
-            "HKID": {
-                "IDENTITY CARD": 12,
-                "HONG KONG PERMANENT": 10,
-                "HONG KONG IDENTITY CARD": 10,
-                "\\w*\\s*[A-Z]{2,4}": 10,
-                "[A-Za-z]\\d{6}\\s*(\\d)": 10,
-            },
-            "Passport": {
-                "<": 1,
-                ">": 1,
-            },
-            "Chinese_2_way_permit": {
-                "生來港 澳": 15,
-                "生來 港 澳 証": 11,
-            },
-            "Driving_License": {
-                "driving licence": 5,
-                "driving license": 4,
-                "driver licence": 3,
-                "driver license": 3,
-                "driver": 6,
-                "drivern\\s": 6,
-                "licence": 6,
-                "license": 6,
-            },
-            "water_bill": {"water": 15},
-            "energy_bill": {
-                "gas": 6,
-                "electricity": 8,
-                "energy": 3,
-                "electrical": 6,
-                "power": 7,
-                "electric": 6,
-                "kwh": 6,
-                "fuel": 6,
-            },
-            "EIDVA": {
-                "eid&v": 12,
-                "eid&va": 12,
-                "experian reference": 5,
-            },
-            "National_Identity_card": {
-                "IDENTITY CARD": 12,
-                "CARTE": 15,
-                "CARTE DE IDENTITATE": 15,
-                "D'IDENTITE": 12,
-                "didendite": 15,
-            },
-        }
-    },
-}
-
-folder_to_label = {
-    "BusinessRegistrationCertificate": "brdoc",
-    "Certificate Of Incumbency": "certificateofincumbency",
-    "Certificate Of Incorporation": "coidoc",
-    "Company Registry Report": "company_reg_report",
-    "Foundation Charter": "foundcharter",  # Already present in folder_to_label
-    "AOA": "artofassociation",
-    "M&A": "manda",
-    "Annual Report": "annual_return",
-    "Org Chart": "orgchart",
-    "Proof of Business Address": "company_website_pba",
-    "Street View - Proof of Business Address": "streetview_pba",
-    "Partnership_agreement": "partnershipagreement",
-    "Form_1_AC": "coidoc",
-    "FACTA_FORM": "factaforms",
-    "Listing_Proof": "listing_proof",
-    "Passport": "passport",
-    "Driving_License": "dl",
-    "National_Identity_card": "national_identity_card",
-    "HKID": "hkid",
-    "Account_Opening_Form": "ofss",
-    "BusinessBankAccountStatements": "business_bank_acc_statements",
-    "Written Confirmation from a Firm of Lawyers": "Written_Confirmation_from_a_Firm_of_Lawyers",
-    "BR": "BR",
-    "MOM": "MOM",
-    "NAR1": "NAR1",
-    "ND2A": "ND2A",
-    "EMAIL": "EMAIL",
-    "UNKNOWN_DOCTYPE": "UNKNOWN_DOCTYPE",
-    "Chinese_2_way_permit": "Chinese_2_way_permit",
-    "energy_bill": "energy_bill",
-    "water_bill": "water_bill",
-    "EIDVA": "eidva",
+"Macao_non_permanent_id": {
+    "\\d{2}-\\d{2}-\\d{4}": 4,
+    "非永久性居民身份證": 20,
+    "BILHETE DE IDENTIDADE DE RESIDENTE NÃO PERMANENTE": 20,
+    "BILHETE DE IDENTIDADE DE RESIDENTE NAO PERMANENTE": 20,
+    "RESIDENTE NÃO PERMANENTE": 15,
+    "RESIDENTE NAO PERMANENTE": 15,
+    "澳門特別行政區": 10,
+    "REGIÃO ADMINISTRATIVA ESPECIAL DE MACAU": 10,
+    "REGIAO ADMINISTRATIVA": 5
 }
 
 
-def ConfigSectionMap(section, config):
-    dict1 = {}
-    options = config.options(section)
-    for option in options:
-        try:
-            dict1[option] = config.get(section, option)
-            if dict1[option] == -1:
-                print("skip: %s" % option)
-        except:
-            print("exception on %s" % option)
-            dict1[option] = None
-    return dict1
+"Update_of_Customer_Information": {
+    # High weightage for exact form titles and Chinese equivalents
+    "Customer Information Update Form": 15,
+    "補誌客戶資料表格": 15,
+    "Customer Level Dormant Reactivation": 12,
+    "重新啟動不動戶口": 12,
+    
+    # Form codes (Regex patterns for D624 / D618 forms)
+    r"D624[\w\-]*": 12,
+    r"D618[\w\-]*": 10,
+    
+    # Section headers (Medium weightage)
+    "Details of Customer Information Update": 10,
+    "客戶資料補誌": 10,
+    "Dormant account information": 8,
+    "不動戶賬戶信息": 8,
+    
+    # Supporting attributes (Lower weightage)
+    "Details of Contact Information": 5,
+    "Details of Address Information": 5,
+    "Details of Employment Information": 5,
+}
 
 
-def read_config(file_name):
-    config = configparser.ConfigParser()
-    config.read(file_name)
-    config_dict = {}
-    for section in config.sections():
-        config_dict[section] = ConfigSectionMap(section, config)
-    return config_dict
 
-
-if os.getenv("ENV_TYPE") is not None:
-    ENV = os.getenv("ENV_TYPE").upper()
-else:
-    ENV = "DEV"
-
-print(f"{ENV}-environment configs were imported")
-if ENV == "DEV" or ENV is None:
-    configs = ConfigSectionMap("DEV", config)
-elif ENV == "SIT":
-    configs = ConfigSectionMap("SIT", config)
-elif ENV == "UAT":
-    configs = ConfigSectionMap("UAT", config)
-elif ENV == "PROD":
-    configs = ConfigSectionMap("PROD", config)
-elif ENV == "CONT":
-    configs = ConfigSectionMap("PROD", config)
-else:
-    configs = ConfigSectionMap("DEV", config)
-
-ssl_keyfile = configs["ssl_keyfile"]
-ssl_certfile = configs["ssl_certfile"]
-port = int(configs["port"])
-workers = int(configs["workers"])
-host = configs["host"]
-EXTRACT_ENDPOINT = configs["ocr_suite"]
+"D615_Customer_Info_Review": {
+    # Form Codes & Exact Titles (High confidence)
+    r"D615\s*-\s*R\d+": 15,
+    "Customer Information Review Form": 15,
+    "補充客戶資料表格": 15,
+    "D615": 12,
+    
+    # Key Section Headers & Unique Phrase Combinations
+    "Details of Customer Information Update": 8,
+    "Details of Ongoing Source(s) of Funds": 8,
+    "Details of Source(s) of Wealth": 8,
+    "Connected Parties Information": 8,
+    "Contributor Supplementary Information": 8,
+    "Details of Employment Information": 6,
+    
+    # Institution / Context Keywords
+    "HANG SENG BANK": 5,
+    "恒生銀行有限公司": 5
+}
