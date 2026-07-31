@@ -1,57 +1,29 @@
-"Macao_non_permanent_id": {
-    "\\d{2}-\\d{2}-\\d{4}": 4,
-    "非永久性居民身份證": 20,
-    "BILHETE DE IDENTIDADE DE RESIDENTE NÃO PERMANENTE": 20,
-    "BILHETE DE IDENTIDADE DE RESIDENTE NAO PERMANENTE": 20,
-    "RESIDENTE NÃO PERMANENTE": 15,
-    "RESIDENTE NAO PERMANENTE": 15,
-    "澳門特別行政區": 10,
-    "REGIÃO ADMINISTRATIVA ESPECIAL DE MACAU": 10,
-    "REGIAO ADMINISTRATIVA": 5
+# Configurations/params.py
+
+business_categories = {
+    # ... existing mandates ...
+    "wpb-irr": {
+        "categories": {
+            # ... existing categories ...
+            "National_Identity_card": {
+                "IDENTITY CARD": 12,
+                "REPUBLIC OF SINGAPORE": 15,
+                "IDENTITY CARD NO": 15,
+                "NRIC No": 15,
+                "NRIC": 10,
+                "居民身份证": 15,
+                "中华人民共和国": 15,
+                "公民身份号码": 15,
+                "CARTE": 15,
+                "CARTE DE IDENTITATE": 15,
+                "D'IDENTITE": 12
+            }
+        }
+    }
 }
 
-
-"Update_of_Customer_Information": {
-    # High weightage for exact form titles and Chinese equivalents
-    "Customer Information Update Form": 15,
-    "補誌客戶資料表格": 15,
-    "Customer Level Dormant Reactivation": 12,
-    "重新啟動不動戶口": 12,
-    
-    # Form codes (Regex patterns for D624 / D618 forms)
-    r"D624[\w\-]*": 12,
-    r"D618[\w\-]*": 10,
-    
-    # Section headers (Medium weightage)
-    "Details of Customer Information Update": 10,
-    "客戶資料補誌": 10,
-    "Dormant account information": 8,
-    "不動戶賬戶信息": 8,
-    
-    # Supporting attributes (Lower weightage)
-    "Details of Contact Information": 5,
-    "Details of Address Information": 5,
-    "Details of Employment Information": 5,
-}
-
-
-
-"D615_Customer_Info_Review": {
-    # Form Codes & Exact Titles (High confidence)
-    r"D615\s*-\s*R\d+": 15,
-    "Customer Information Review Form": 15,
-    "補充客戶資料表格": 15,
-    "D615": 12,
-    
-    # Key Section Headers & Unique Phrase Combinations
-    "Details of Customer Information Update": 8,
-    "Details of Ongoing Source(s) of Funds": 8,
-    "Details of Source(s) of Wealth": 8,
-    "Connected Parties Information": 8,
-    "Contributor Supplementary Information": 8,
-    "Details of Employment Information": 6,
-    
-    # Institution / Context Keywords
-    "HANG SENG BANK": 5,
-    "恒生銀行有限公司": 5
+folder_to_label = {
+    # ... existing folder labels ...
+    "National_Identity_card": "national_identity_card",
+    # ...
 }
