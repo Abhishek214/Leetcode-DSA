@@ -8,29 +8,28 @@ from configurations.params import (
 )
 
 
+EXPECTED_HOST = "my-cdg-service.company.com"
+
+
 class TestCDGUrls(unittest.TestCase):
 
-    def assert_valid_url(self, url, name):
-        self.assertIsNotNone(url, f"{name} is None")
-        self.assertNotEqual(url.strip(), "", f"{name} is empty")
-
-        parsed = urlparse(url)
-
-        self.assertIn(
-            parsed.scheme,
-            ("http", "https"),
-            f"{name} is not a valid HTTP/HTTPS URL: {url}"
+    def test_cdg_upload_url_host(self):
+        self.assertEqual(
+            urlparse(CDG_UPLOAD_URL).hostname,
+            EXPECTED_HOST
         )
 
-        self.assertTrue(
-            parsed.netloc,
-            f"{name} does not contain a valid host: {url}"
+    def test_cdg_upload_status_url_host(self):
+        self.assertEqual(
+            urlparse(CDG_UPLOAD_STATUS).hostname,
+            EXPECTED_HOST
         )
 
-    def test_cdg_urls(self):
-        self.assert_valid_url(CDG_UPLOAD_URL, "CDG_UPLOAD_URL")
-        self.assert_valid_url(CDG_UPLOAD_STATUS, "CDG_UPLOAD_STATUS")
-        self.assert_valid_url(global_cdg_download, "global_cdg_download")
+    def test_cdg_download_url_host(self):
+        self.assertEqual(
+            urlparse(global_cdg_download).hostname,
+            EXPECTED_HOST
+        )
 
 
 if __name__ == "__main__":
