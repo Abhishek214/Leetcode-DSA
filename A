@@ -1,29 +1,37 @@
-# Configurations/params.py
+import unittest
+from urllib.parse import urlparse
 
-business_categories = {
-    # ... existing mandates ...
-    "wpb-irr": {
-        "categories": {
-            # ... existing categories ...
-            "National_Identity_card": {
-                "IDENTITY CARD": 12,
-                "REPUBLIC OF SINGAPORE": 15,
-                "IDENTITY CARD NO": 15,
-                "NRIC No": 15,
-                "NRIC": 10,
-                "居民身份证": 15,
-                "中华人民共和国": 15,
-                "公民身份号码": 15,
-                "CARTE": 15,
-                "CARTE DE IDENTITATE": 15,
-                "D'IDENTITE": 12
-            }
-        }
-    }
-}
+from configurations.params import (
+    CDG_UPLOAD_URL,
+    CDG_UPLOAD_STATUS,
+    global_cdg_download
+)
 
-folder_to_label = {
-    # ... existing folder labels ...
-    "National_Identity_card": "national_identity_card",
-    # ...
-}
+
+class TestCDGUrls(unittest.TestCase):
+
+    def assert_valid_url(self, url, name):
+        self.assertIsNotNone(url, f"{name} is None")
+        self.assertNotEqual(url.strip(), "", f"{name} is empty")
+
+        parsed = urlparse(url)
+
+        self.assertIn(
+            parsed.scheme,
+            ("http", "https"),
+            f"{name} is not a valid HTTP/HTTPS URL: {url}"
+        )
+
+        self.assertTrue(
+            parsed.netloc,
+            f"{name} does not contain a valid host: {url}"
+        )
+
+    def test_cdg_urls(self):
+        self.assert_valid_url(CDG_UPLOAD_URL, "CDG_UPLOAD_URL")
+        self.assert_valid_url(CDG_UPLOAD_STATUS, "CDG_UPLOAD_STATUS")
+        self.assert_valid_url(global_cdg_download, "global_cdg_download")
+
+
+if __name__ == "__main__":
+    unittest.main()
