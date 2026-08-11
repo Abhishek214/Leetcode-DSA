@@ -1,36 +1,21 @@
-import unittest
 from urllib.parse import urlparse
 
 from configurations.params import (
     CDG_UPLOAD_URL,
     CDG_UPLOAD_STATUS,
-    global_cdg_download
+    download_api,
 )
-
 
 EXPECTED_HOST = "my-cdg-service.company.com"
 
 
-class TestCDGUrls(unittest.TestCase):
-
-    def test_cdg_upload_url_host(self):
-        self.assertEqual(
-            urlparse(CDG_UPLOAD_URL).hostname,
-            EXPECTED_HOST
-        )
-
-    def test_cdg_upload_status_url_host(self):
-        self.assertEqual(
-            urlparse(CDG_UPLOAD_STATUS).hostname,
-            EXPECTED_HOST
-        )
-
-    def test_cdg_download_url_host(self):
-        self.assertEqual(
-            urlparse(global_cdg_download).hostname,
-            EXPECTED_HOST
-        )
+def test_cdg_upload_url_host():
+    assert urlparse(CDG_UPLOAD_URL).hostname == EXPECTED_HOST
 
 
-if __name__ == "__main__":
-    unittest.main()
+def test_cdg_upload_status_url_host():
+    assert urlparse(CDG_UPLOAD_STATUS).hostname == EXPECTED_HOST
+
+
+def test_cdg_download_url_host():
+    assert urlparse(download_api).hostname == EXPECTED_HOST
