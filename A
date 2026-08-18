@@ -1,1 +1,598 @@
-python benchmark_classification.py --file sample_doc.pdf --concurrency 5 --requests 20
+import time
+import random
+import statistics
+from dataclasses import dataclass
+from collections import defaultdict
+from typing import List
+
+
+# ============================================================
+# 1. Azure-like mock objects
+# ============================================================
+
+@dataclass
+class Span:
+    offset: int
+    length: int
+
+
+@dataclass
+class Word:
+    content: str
+    confidence: float
+    polygon: list
+    span: Span
+
+
+@dataclass
+class Line:
+    spans: list
+
+
+@dataclass
+class Page:
+    width: float
+    height: float
+    words: list
+    lines: list
+
+
+# ============================================================
+# 2. Generate realistic Azure OCR-like test data
+# ============================================================
+
+def generate_page(
+    num_lines=100,
+    words_per_line=10,
+    page_width=8.27,
+    page_height=11.69
+):
+    """
+    Generate Azure Document Intelligence-like OCR data.
+
+    Example:
+        100 lines × 10 words = 1000 words/page
+    """
+
+    words = []
+    lines = []
+
+    current_offset = 0
+
+    for line_idx in range(num_lines):
+
+        line_start = current_offset
+
+        for word_idx in range(words_per_line):
+
+            text = f"word_{line_idx}_{word_idx}"
+
+            word_length = len(text)
+
+            # Simple rectangular polygon
+            x = random.uniform(0, page_width)
+            y = (line_idx / num_lines) * page_height
+
+            width = 0.5
+            height = 0.15
+
+            polygon = [
+                x, y,
+                x + width, y,
+                x + width, y + height,
+                x, y + height
+            ]
+
+            words.append(
+                Word(
+                    content=text,
+                    confidence=random.uniform(0.8, 0.99),
+                    polygon=polygon,
+                    span=Span(
+                        offset=current_offset,
+                        length=word_length
+                    )
+                )
+            )
+
+            current_offset += word_length + 1
+
+        line_end = current_offset
+
+        lines.append(
+            Line(
+                spans=[
+                    Span(
+                        offset=line_start,
+                        length=line_end - line_start
+                    )
+                ]
+            )
+        )
+
+    return Page(
+        width=page_width,
+        height=page_height,
+        words=words,
+        lines=lines
+    )
+
+
+# ============================================================
+# 3. Paragraph test data
+# ============================================================
+
+def generate_paragraphs(
+    num_pages=20,
+    paragraphs_per_page=50
+):
+    paragraphs = []
+
+    for page_number in range(1, num_pages + 1):
+
+        for i in range(paragraphs_per_page):
+
+            paragraphs.append(
+                {
+                    "text": f"Paragraph {i} on page {page_number}",
+                    "page_number": page_number,
+                    "bboxes": [
+                        1.0, 1.0,
+                        3.0, 1.0,
+                        3.0, 1.5,
+                        1.0, 1.5
+                    ]
+                }
+            )
+
+    return paragraphs
+
+
+# ============================================================
+# 4. OLD / CURRENT IMPLEMENTATION
+# ============================================================
+
+def old_convert_polygon_bbox_pixel(
+    src_image_shape,
+    polygon,
+    page_width_in_inches,
+    page_height_in_inches
+):
+    """
+    Equivalent to your current implementation.
+    """
+
+    image_height, image_width = src_image_shape[:2]
+
+    x = [
+        polygon[i]
+        for i in range(0, len(polygon), 2)
+    ]
+
+    y = [
+        polygon[i]
+        for i in range(1, len(polygon), 2)
+    ]
+
+    xmin = min(x)
+    ymin = min(y)
+    xmax = max(x)
+    ymax = max(y)
+
+    xmin_pixel = int(
+        (xmin / page_width_in_inches) * image_width
+    )
+
+    ymin_pixel = int(
+        (ymin / page_height_in_inches) * image_height
+    )
+
+    xmax_pixel = int(
+        (xmax / page_width_in_inches) * image_width
+    )
+
+    ymax_pixel = int(
+        (ymax / page_height_in_inches) * image_height
+    )
+
+    return (
+        xmin_pixel,
+        ymin_pixel,
+        xmax_pixel,
+        ymax_pixel
+    )
+
+
+def old_in_span(word, line_spans):
+    """
+    Represents the span matching logic used by the
+    current implementation.
+
+    A word belongs to a line if its character span
+    overlaps the line span.
+    """
+
+    word_start = word.span.offset
+    word_end = word_start + word.span.length
+
+    for span in line_spans:
+
+        span_start = span.offset
+        span_end = span.offset + span.length
+
+        if word_start >= span_start and word_end <= span_end:
+            return True
+
+    return False
+
+
+def old_process_page(
+    page,
+    src_image_shape,
+    paragraphs,
+    page_number
+):
+    """
+    Current-style implementation.
+
+    Important:
+    This intentionally contains the expensive operations
+    so that we can compare it with the optimized version.
+    """
+
+    page_response = []
+
+    # --------------------------------------------------------
+    # LINE -> WORD -> _in_span()
+    # --------------------------------------------------------
+
+    if page.lines:
+
+        for line in page.lines:
+
+            if page.words:
+
+                for word in page.words:
+
+                    if old_in_span(word, line.spans):
+
+                        word_bbox = old_convert_polygon_bbox_pixel(
+                            src_image_shape,
+                            word.polygon,
+                            page.width,
+                            page.height
+                        )
+
+                        page_response.append(
+                            {
+                                "word": word.content,
+                                "bbox": word_bbox,
+                                "confidence": word.confidence
+                            }
+                        )
+
+    # --------------------------------------------------------
+    # Current paragraph filtering
+    # --------------------------------------------------------
+
+    page_paragraphs = [
+        p
+        for p in paragraphs
+        if p["page_number"] == page_number
+    ]
+
+    # Current implementation converts bbox here
+    for para in page_paragraphs:
+
+        para["bboxes"] = old_convert_polygon_bbox_pixel(
+            src_image_shape,
+            para["bboxes"],
+            page.width,
+            page.height
+        )
+
+    return {
+        "words": page_response,
+        "paragraphs": page_paragraphs
+    }
+
+
+# ============================================================
+# 5. OPTIMIZED IMPLEMENTATION
+# ============================================================
+
+def optimized_polygon_to_bbox(
+    polygon,
+    x_scale,
+    y_scale
+):
+    """
+    Optimized bbox conversion.
+
+    Scaling factors are calculated ONCE per page.
+    """
+
+    xs = polygon[::2]
+    ys = polygon[1::2]
+
+    return (
+        int(min(xs) * x_scale),
+        int(min(ys) * y_scale),
+        int(max(xs) * x_scale),
+        int(max(ys) * y_scale)
+    )
+
+
+def build_paragraph_index(paragraphs):
+    """
+    Build page_number -> paragraphs index once.
+    """
+
+    paragraphs_by_page = defaultdict(list)
+
+    for paragraph in paragraphs:
+        paragraphs_by_page[
+            paragraph["page_number"]
+        ].append(paragraph)
+
+    return paragraphs_by_page
+
+
+def optimized_process_page(
+    page,
+    src_image_shape,
+    paragraphs_by_page,
+    page_number
+):
+    """
+    Optimized page processing.
+    """
+
+    # --------------------------------------------------------
+    # Calculate scaling ONCE
+    # --------------------------------------------------------
+
+    image_height, image_width = src_image_shape[:2]
+
+    x_scale = image_width / page.width
+    y_scale = image_height / page.height
+
+    page_response = []
+
+    words = page.words or []
+
+    word_index = 0
+
+    # --------------------------------------------------------
+    # Sequential span matching
+    #
+    # Instead of:
+    #
+    #   for line:
+    #       for word:
+    #
+    # we move through the words only once.
+    # --------------------------------------------------------
+
+    for line in page.lines or []:
+
+        line_start = min(
+            span.offset
+            for span in line.spans
+        )
+
+        line_end = max(
+            span.offset + span.length
+            for span in line.spans
+        )
+
+        while word_index < len(words):
+
+            word = words[word_index]
+
+            word_start = word.span.offset
+            word_end = (
+                word_start +
+                word.span.length
+            )
+
+            # Word belongs to previous line
+            if word_end <= line_start:
+                word_index += 1
+                continue
+
+            # Word belongs to a future line
+            if word_start >= line_end:
+                break
+
+            # Word belongs to this line
+            page_response.append(
+                {
+                    "word": word.content,
+                    "bbox": optimized_polygon_to_bbox(
+                        word.polygon,
+                        x_scale,
+                        y_scale
+                    ),
+                    "confidence": word.confidence
+                }
+            )
+
+            word_index += 1
+
+    # --------------------------------------------------------
+    # O(1) paragraph lookup
+    # --------------------------------------------------------
+
+    page_paragraphs = paragraphs_by_page.get(
+        page_number,
+        []
+    )
+
+    # Don't mutate original paragraph objects
+    optimized_paragraphs = []
+
+    for para in page_paragraphs:
+
+        optimized_paragraphs.append(
+            {
+                **para,
+                "bboxes": optimized_polygon_to_bbox(
+                    para["bboxes"],
+                    x_scale,
+                    y_scale
+                )
+            }
+        )
+
+    return {
+        "words": page_response,
+        "paragraphs": optimized_paragraphs
+    }
+
+
+# ============================================================
+# 6. Generate benchmark dataset
+# ============================================================
+
+NUM_PAGES = 20
+
+pages = [
+    generate_page(
+        num_lines=100,
+        words_per_line=10
+    )
+    for _ in range(NUM_PAGES)
+]
+
+paragraphs = generate_paragraphs(
+    num_pages=NUM_PAGES,
+    paragraphs_per_page=50
+)
+
+# Example image size returned by your self.file_image_sizes
+image_shapes = [
+    (3300, 2550)
+    for _ in range(NUM_PAGES)
+]
+
+
+print("Pages:", len(pages))
+print("Words per page:", len(pages[0].words))
+print("Lines per page:", len(pages[0].lines))
+print("Total words:", sum(len(p.words) for p in pages))
+print("Total paragraphs:", len(paragraphs))
+
+
+# ============================================================
+# 7. Benchmark OLD implementation
+# ============================================================
+
+def benchmark_old():
+
+    start = time.perf_counter()
+
+    results = []
+
+    for ix, page in enumerate(pages):
+
+        # Make fresh paragraphs because old implementation
+        # mutates them.
+        page_paragraphs = [
+            dict(p)
+            for p in paragraphs
+        ]
+
+        result = old_process_page(
+            page,
+            image_shapes[ix],
+            page_paragraphs,
+            ix + 1
+        )
+
+        results.append(result)
+
+    return time.perf_counter() - start
+
+
+# ============================================================
+# 8. Benchmark OPTIMIZED implementation
+# ============================================================
+
+def benchmark_optimized():
+
+    start = time.perf_counter()
+
+    paragraphs_by_page = build_paragraph_index(
+        paragraphs
+    )
+
+    results = []
+
+    for ix, page in enumerate(pages):
+
+        result = optimized_process_page(
+            page,
+            image_shapes[ix],
+            paragraphs_by_page,
+            ix + 1
+        )
+
+        results.append(result)
+
+    return time.perf_counter() - start
+
+
+# ============================================================
+# 9. Warm-up
+# ============================================================
+
+benchmark_old()
+benchmark_optimized()
+
+
+# ============================================================
+# 10. Run multiple iterations
+# ============================================================
+
+ITERATIONS = 5
+
+old_times = []
+optimized_times = []
+
+for i in range(ITERATIONS):
+
+    old_time = benchmark_old()
+    optimized_time = benchmark_optimized()
+
+    old_times.append(old_time)
+    optimized_times.append(optimized_time)
+
+    print(
+        f"Run {i + 1}: "
+        f"Old = {old_time:.4f}s | "
+        f"Optimized = {optimized_time:.4f}s"
+    )
+
+
+# ============================================================
+# 11. Results
+# ============================================================
+
+old_avg = statistics.mean(old_times)
+optimized_avg = statistics.mean(optimized_times)
+
+speedup = old_avg / optimized_avg
+improvement = (
+    (old_avg - optimized_avg)
+    / old_avg
+) * 100
+
+print("\n" + "=" * 60)
+print("PERFORMANCE RESULTS")
+print("=" * 60)
+
+print(f"Old average       : {old_avg:.4f} sec")
+print(f"Optimized average : {optimized_avg:.4f} sec")
+print(f"Speedup            : {speedup:.2f}x")
+print(f"Time improvement   : {improvement:.2f}%")
