@@ -1,6 +1,171 @@
-docker run -d --name jaeger \
-  -e COLLECTOR_OTLP_ENABLED=true \
-  -p 16686:16686 \
-  -p 4317:4317 \
-  -p 4318:4318 \
-  jaegertracing/all-in-one:latest
+from collections import defaultdict
+
+# ------------------------------------------------------------
+# Build paragraph index ONCE before processing pages
+# ------------------------------------------------------------
+paragraphs_by_page = defaultdict(list)
+
+for paragraph in paragraphs:
+    paragraphs_by_page[paragraph["page_number"]].append(paragraph)
+
+
+with (
+    tracer.start_as_current_span(
+        "ocr.azure.build_page_output"
+    )
+    if tracer
+    else nullcontext()
+) as span:
+
+    for ix, page in enumerate(
+        tqdm(
+            self.result.pages,
+            total=len(pageNumbers),
+            desc="Processing pages"
+        )
+    ):
+
+        page_loop_start = time.perf_counter()
+
+        pg_num = pageNumbers[ix]
+
+        page_response = []
+
+        page_angle = page.angle
+
+        # ----------------------------------------------------
+        # STEP 1 OPTIMIZATION
+        # Calculate image dimensions and scaling ONCE per page
+        # ----------------------------------------------------
+
+        image_height, image_width = self.file_image_sizes[ix][:2]
+
+        x_scale = image_width / page.width
+        y_scale = image_height / page.height
+
+        # ----------------------------------------------------
+        # Process words
+        # ----------------------------------------------------
+
+        if page.lines:
+
+            for line_idx, line in enumerate(page.lines):
+
+                words = []
+
+                if page.words:
+
+                    for word in page.words:
+
+                        if _in_span(word, line.spans):
+
+                            word_text = word.content
+
+                            word_confidence = word.confidence
+
+                            # ------------------------------------------------
+                            # STEP 1 OPTIMIZATION
+                            # Use pre-calculated scaling factors
+                            # ------------------------------------------------
+
+                            word_bbox = convert_polygon_bbox_pixel(
+                                word.polygon,
+                                x_scale,
+                                y_scale
+                            )
+
+                            # Append each word and its bbox
+                            # as a separate entry
+
+                            page_response.append(
+                                {
+                                    "word": word_text,
+                                    "bbox": word_bbox,
+                                    "confidence": word_confidence
+                                }
+                            )
+
+        # ----------------------------------------------------
+        # STEP 2 OPTIMIZATION
+        # Get paragraphs using dictionary lookup
+        # instead of scanning the complete paragraphs list
+        # ----------------------------------------------------
+
+        page_paragraphs = paragraphs_by_page.get(
+            pg_num,
+            []
+        )
+
+        # ----------------------------------------------------
+        # Convert paragraph bounding boxes
+        # ----------------------------------------------------
+
+        for para in page_paragraphs:
+
+            para["bboxes"] = convert_polygon_bbox_pixel(
+                para["bboxes"],
+                x_scale,
+                y_scale
+            )
+
+        # ----------------------------------------------------
+        # Build page response
+        # ----------------------------------------------------
+
+        response[pg_num] = {
+            "orientation": page_angle,
+            "width": page.width,
+            "height": page.height,
+            "measured_unit": page.unit,
+            "paragraphs": page_paragraphs,
+            "words": page_response
+        }
+
+        self.orientations.append(page_angle)
+
+        # ----------------------------------------------------
+        # Tracing
+        # ----------------------------------------------------
+
+        if span:
+
+            span.set_attribute(
+                "ocr.page.count",
+                len(pageNumbers)
+            )
+
+            span.set_attribute(
+                "ocr.stage.duration_ms",
+                (time.perf_counter() - page_loop_start) * 1000
+            )
+
+
+# ------------------------------------------------------------
+# OCR output
+# ------------------------------------------------------------
+
+self.ocr_output = {
+    "status": "success",
+    "engine": f"Azure AI Document Intelligence({model})",
+    "pages": len(pageNumbers),
+    "timeTaken": "",
+    "rescale_zoom": round(self.zoom, 4),
+    "output": response
+}
+
+return self.ocr_output
+
+
+if old_page_paragraphs != new_page_paragraphs:
+    print("❌ PARAGRAPH DIFFERENCE")
+    print("Page:", pg_num)
+    print("Old count:", len(old_page_paragraphs))
+    print("New count:", len(new_page_paragraphs))
+
+    for old, new in zip(old_page_paragraphs, new_page_paragraphs):
+        if old != new:
+            print("OLD:", old)
+            print("NEW:", new)
+            break
+else:
+    print(f"✅ Page {pg_num}: paragraphs match")
