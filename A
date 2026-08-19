@@ -1,61 +1,6 @@
-def convert_polygon_bbox_pixel_new(
-    polygon,
-    x_scale,
-    y_scale
-):
-    x = polygon[::2]
-    y = polygon[1::2]
-
-    xmin = min(x)
-    ymin = min(y)
-    xmax = max(x)
-    ymax = max(y)
-
-    return (
-        int(xmin * x_scale),
-        int(ymin * y_scale),
-        int(xmax * x_scale),
-        int(ymax * y_scale)
-    )
-
-
-for ix, page in enumerate(
-    tqdm(
-        self.result.pages,
-        total=len(pageNumbers),
-        desc="Processing pages"
-    )
-):
-
-    pg_num = pageNumbers[ix]
-
-    page_response = []
-    page_angle = page.angle
-
-    # NEW
-    image_height, image_width = self.file_image_sizes[ix][:2]
-
-    x_scale = image_width / page.width
-    y_scale = image_height / page.height
-
-
-
-old_bbox = convert_polygon_bbox_pixel_old(
-    self.file_image_sizes[ix],
-    word.polygon,
-    page.width,
-    page.height
-)
-
-new_bbox = convert_polygon_bbox_pixel_new(
-    word.polygon,
-    x_scale,
-    y_scale
-)
-
-if old_bbox != new_bbox:
-    print("❌ BBOX DIFFERENCE")
-    print("Word:", word.content)
-    print("Polygon:", word.polygon)
-    print("Old:", old_bbox)
-    print("New:", new_bbox)
+docker run -d --name jaeger \
+  -e COLLECTOR_OTLP_ENABLED=true \
+  -p 16686:16686 \
+  -p 4317:4317 \
+  -p 4318:4318 \
+  jaegertracing/all-in-one:latest
