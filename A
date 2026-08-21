@@ -1,126 +1,22 @@
-def get_span_range(spans):
-    """
-    Return the start and end character offsets for a collection
-    of Azure OCR spans.
-    """
-    start = min(span.offset for span in spans)
-    end = max(
-        span.offset + span.length
-        for span in spans
-    )
+# pvt.py
 
-    return start, end
+from your_module import AzureDocOCRProcessor
 
 
+def main():
+    required_methods = [
+        "convert_polygon_bbox_pixel",
+        "process_pages",
+    ]
 
-# ------------------------------------------------------------
-# STEP 3 OPTIMIZATION
-# Sequential word/line span matching
-# ------------------------------------------------------------
-
-page_response = []
-
-words = page.words or []
-
-word_index = 0
-
-for line in page.lines or []:
-
-    if not line.spans:
-        continue
-
-    # Get character range covered by this line
-    line_start, line_end = get_span_range(
-        line.spans
-    )
-
-    # --------------------------------------------------------
-    # Move forward through words only once
-    # --------------------------------------------------------
-
-    while word_index < len(words):
-
-        word = words[word_index]
-
-        word_start = word.span.offset
-        word_end = (
-            word.span.offset +
-            word.span.length
+    for method in required_methods:
+        assert hasattr(AzureDocOCRProcessor, method), (
+            f"Missing method: {method}"
         )
 
-        # ----------------------------------------------------
-        # Word belongs to a previous line
-        # ----------------------------------------------------
-
-        if word_end <= line_start:
-            word_index += 1
-            continue
-
-        # ----------------------------------------------------
-        # Word belongs to a future line
-        #
-        # Since words are ordered, we can stop looking for
-        # this line.
-        # ----------------------------------------------------
-
-        if word_start >= line_end:
-            break
-
-        # ----------------------------------------------------
-        # Word belongs to this line
-        # ----------------------------------------------------
-
-        word_text = word.content
-
-        word_confidence = word.confidence
-
-        word_bbox = convert_polygon_bbox_pixel(
-            word.polygon,
-            x_scale,
-            y_scale
-        )
-
-        page_response.append(
-            {
-                "word": word_text,
-                "bbox": word_bbox,
-                "confidence": word_confidence
-            }
-        )
-
-        word_index += 1
+    print("✅ PVT PASSED")
+    print("All optimized methods are available")
 
 
-if old_page_response != new_page_response:
-
-    print("❌ STEP 3 DIFFERENCE")
-    print("Page:", pg_num)
-    print("Old word count:", len(old_page_response))
-    print("New word count:", len(new_page_response))
-
-    for i, (old, new) in enumerate(
-        zip(old_page_response, new_page_response)
-    ):
-
-        if old != new:
-
-            print("First difference at index:", i)
-            print("OLD:", old)
-            print("NEW:", new)
-
-            break
-
-else:
-
-    print(
-        f"✅ Page {pg_num}: "
-        f"{len(old_page_response)} words match"
-    )
-
-if len(old_page_response) != len(new_page_response):
-    print(
-        "❌ WORD COUNT DIFFERENCE",
-        pg_num,
-        len(old_page_response),
-        len(new_page_response)
-    )
+if __name__ == "__main__":
+    main()
