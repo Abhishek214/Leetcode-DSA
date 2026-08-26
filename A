@@ -1,22 +1,22 @@
-# pvt.py
+# Inside Configurations/params.py
 
-from your_module import AzureDocOCRProcessor
-
-
-def main():
-    required_methods = [
-        "convert_polygon_bbox_pixel",
-        "process_pages",
-    ]
-
-    for method in required_methods:
-        assert hasattr(AzureDocOCRProcessor, method), (
-            f"Missing method: {method}"
-        )
-
-    print("✅ PVT PASSED")
-    print("All optimized methods are available")
-
-
-if __name__ == "__main__":
-    main()
+business_categories = {
+    "mandates": {
+        # ... existing categories ...
+    },
+    "wpb-irr": {
+        "categories": {
+            # ... existing categories ...
+            
+            # Add Hang Seng Bank Account Opening Form Rules
+            "Account_Opening_Form": {
+                r"Personal/Joint\s*\([^)]*\)\s*Account\s*Application\s*Form": 15,
+                r"Savings/Current/Time\s*Deposit": 12,
+                r"Hang\s*Seng\s*Bank": 10,
+                r"個人\s*/?\s*聯名": 12,
+                r"戶口申請表": 15,
+                r"恆生銀行": 10,
+            }
+        }
+    }
+}
