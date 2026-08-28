@@ -1,22 +1,24 @@
-# Inside Configurations/params.py
+"Current_account_application": {
+    # High-confidence Chinese Header & Form Code Matches
+    r"個人/聯名.*戶口申請表": 30,
+    r"osco1a": 25,
+    "戶口申請表": 20,
+    
+    # Feature / Account Type Matches
+    "港幣往來": 15,
+    "外幣往來": 15,
+    "支票戶口專用": 15,
+    "renminbi current account": 15,
+    "branch approval for general a/c opening": 15,
+    "支票簿申請": 12,
+    "存款保障計劃": 10,
 
-business_categories = {
-    "mandates": {
-        # ... existing categories ...
-    },
-    "wpb-irr": {
-        "categories": {
-            # ... existing categories ...
-            
-            # Add Hang Seng Bank Account Opening Form Rules
-            "Account_Opening_Form": {
-                r"Personal/Joint\s*\([^)]*\)\s*Account\s*Application\s*Form": 15,
-                r"Savings/Current/Time\s*Deposit": 12,
-                r"Hang\s*Seng\s*Bank": 10,
-                r"個人\s*/?\s*聯名": 12,
-                r"戶口申請表": 15,
-                r"恆生銀行": 10,
-            }
-        }
-    }
+    # Existing English Fallbacks
+    r"Personal/Joint\s*\(([^)]*)\)\s*Account\s*Application\s*Form": 25,
+    r"Savings/Current/Time\s*Deposit": 12,
+    "personal account opening form": 30,
+    "personal overdraft account application form": 20,
+    "expected normal monthly account activity": 10,
+    "for bank use only": 10,
+    "hkd current account": 10
 }
