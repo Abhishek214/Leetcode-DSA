@@ -1,24 +1,23 @@
-"Current_account_application": {
-    # High-confidence Chinese Header & Form Code Matches
-    r"個人/聯名.*戶口申請表": 30,
-    r"osco1a": 25,
-    "戶口申請表": 20,
-    
-    # Feature / Account Type Matches
-    "港幣往來": 15,
-    "外幣往來": 15,
-    "支票戶口專用": 15,
-    "renminbi current account": 15,
-    "branch approval for general a/c opening": 15,
-    "支票簿申請": 12,
-    "存款保障計劃": 10,
+import os
 
-    # Existing English Fallbacks
-    r"Personal/Joint\s*\(([^)]*)\)\s*Account\s*Application\s*Form": 25,
-    r"Savings/Current/Time\s*Deposit": 12,
-    "personal account opening form": 30,
-    "personal overdraft account application form": 20,
-    "expected normal monthly account activity": 10,
-    "for bank use only": 10,
-    "hkd current account": 10
-}
+# 1. Strip any path traversal characters from the filename
+safe_converted_filename = os.path.basename(converted_filename)
+
+# 2. Resolve the absolute canonical paths
+base_dir = os.path.realpath(dest_file_path)
+output_pdf_path = os.path.realpath(os.path.join(base_dir, safe_converted_filename))
+
+# 3. Verify the target path is strictly inside the intended directory
+if os.path.commonpath([base_dir, output_pdf_path]) != base_dir:
+    raise ValueError("Invalid file path: Path traversal attempt detected.")
+
+# Now it is safe to run filesystem operations
+if not os.path.exists(output_pdf_path):
+    error_msg = f"Expected PDF file not found after conversion: {output_pdf_path}"
+    self.logger.error(error_msg)
+    raise LibreOfficeError(error_msg)
+
+os.remove(filename)
+with open(output_pdf_path, 'rb') as fh:
+    converted_file_contents = BytesIO(fh.read())
+os.remove(output_pdf_path)
