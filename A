@@ -1,78 +1,41 @@
-import asyncio
-from pathlib import Path
-import openpyxl
+BLOCKED_UNKNOWN_KEYWORDS = [
+    # Add your keywords/regexes here, e.g.:
+    # r"\bterms and conditions\b",
+    # r"\bprivacy notice\b",
+]
+
+def classify_document_with_scoring(document, business, categories, is_first_page=False, anchor_label=None):
+    if any(re.search(kw, document, re.IGNORECASE) for kw in BLOCKED_UNKNOWN_KEYWORDS):
+        return "BLOCKED", 0
 
 
-async def get_text_with_retry(
-    pdf_path: str, retries: int = 3, delay: float = 2.0
-):
-    for attempt in range(1, retries + 1):
-        try:
-            return await get_text_from_pdf(pdf_path)
-        except Exception as e:
-            if attempt == retries:
-                raise
-            print(
-                f"Attempt {attempt} failed for {Path(pdf_path).name} ({e}). Retrying in {delay * attempt}s..."
-            )
-            await asyncio.sleep(delay * attempt)
+        if anchor_label is None:
+            if label not in ['UNKNOWN_DOCTYPE', 'BLOCKED']:   # <-- changed
+                anchor_label = label
+                data[ix + 1] = label
+                if pending_unknown_pages and anchor_label not in id_card:
+                    logger.info(f"Backfilling {len(pending_unknown_pages)} previous UNKNOWN pages with anchor label: {anchor_label}")
+                    for page_num in pending_unknown_pages:
+                        data[page_num] = anchor_label
+                    pending_unknown_pages = []
+            else:
+                data[ix + 1] = label
+                if label != 'BLOCKED':                        # <-- added
+                    pending_unknown_pages.append(ix + 1)
+        else:
+            data[ix + 1] = label
 
-
-async def export_subfolder_pdfs_to_excel(
-    root_folder: str, output_folder: str = None
-):
-    root = Path(root_folder)
-    out_dir = Path(output_folder) if output_folder else root
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    for sub in [f for f in root.iterdir() if f.is_dir()]:
-        excel_path = out_dir / f"{sub.name}.xlsx"
-
-        # Skip subfolder if its Excel file already exists
-        if excel_path.exists():
-            print(f"Skipping subfolder (already exists): {excel_path.name}")
+        scores.append(score)
+        if label == 'BLOCKED':                                # <-- added (prevents NAR1/ND2A short-page overwrite)
             continue
 
-        # Create ONE workbook per subfolder
-        wb = openpyxl.Workbook()
-        ws = wb.active
-        ws.title = "Extracted text"
-        ws.append(["File_name", "Extracted Text"])
-
-        for file_path in sorted(sub.iterdir()):
-            if file_path.is_file() and file_path.suffix.lower() == ".pdf":
-                try:
-                    extracted_data = await get_text_with_retry(str(file_path))
-
-                    # Keep only the first 3 pages
-                    if isinstance(extracted_data, dict):
-                        first_3_pages = list(extracted_data.items())[:3]
-                        extracted_text = "\n\n".join(
-                            f"--- {page} ---\n{text}"
-                            for page, text in first_3_pages
-                        )
-                    else:
-                        extracted_text = (
-                            str(extracted_data) if extracted_data else ""
-                        )
-
-                    # Excel cell character limit
-                    if len(extracted_text) > 32767:
-                        extracted_text = extracted_text[:32767]
-
-                    ws.append([file_path.name, extracted_text])
-                    print(f"Processed: {file_path.name}")
-
-                except Exception as e:
-                    print(f"FAILED {file_path.name} after retries: {e}")
-                    ws.append([file_path.name, f"ERROR: {e}"])
-
-        wb.save(excel_path)
-        print(f"Saved subfolder Excel: {excel_path}")
 
 
-# Run in Jupyter:
-await export_subfolder_pdfs_to_excel(
-    root_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
-    output_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
-)
+
+        if classification == "BLOCKED":
+            result.append((start, start, "UNKNOWN_DOCTYPE"))
+            i += 1
+            continue
+        if classification == "EMAIL":
+            classification = "UNKNOWN_DOCTYPE"
+
