@@ -13,7 +13,7 @@ async def get_text_with_retry(
             if attempt == retries:
                 raise
             print(
-                f"Attempt {attempt} failed for {Path(pdf_path).name} ({e}). Retrying in {delay}s..."
+                f"Attempt {attempt} failed for {Path(pdf_path).name} ({e}). Retrying in {delay * attempt}s..."
             )
             await asyncio.sleep(delay * attempt)
 
@@ -26,15 +26,21 @@ async def export_subfolder_pdfs_to_excel(
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for sub in [f for f in root.iterdir() if f.is_dir()]:
+        excel_path = out_dir / f"{sub.name}.xlsx"
+
+        # Skip subfolder if its Excel file was already created
+        if excel_path.exists():
+            print(f"Skipping subfolder (already exists): {excel_path.name}")
+            continue
+
+        # Create ONE workbook per subfolder
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Extracted text"
+        ws.append(["File_name", "Extracted Text"])
+
         for file_path in sorted(sub.iterdir()):
             if file_path.is_file() and file_path.suffix.lower() == ".pdf":
-                excel_path = out_dir / f"{file_path.stem}.xlsx"
-
-                # Resume support: skip files that were already saved
-                if excel_path.exists():
-                    print(f"Skipping (already exists): {excel_path.name}")
-                    continue
-
                 try:
                     extracted_data = await get_text_with_retry(str(file_path))
 
@@ -53,14 +59,13 @@ async def export_subfolder_pdfs_to_excel(
                     if len(extracted_text) > 32767:
                         extracted_text = extracted_text[:32767]
 
-                    wb = openpyxl.Workbook()
-                    ws = wb.active
-                    ws.title = "Extracted text"
-                    ws.append(["File_name", "Extracted Text"])
                     ws.append([file_path.name, extracted_text])
-
-                    wb.save(excel_path)
-                    print(f"Saved : {excel_path}")
+                    print(f"Processed: {file_path.name}")
 
                 except Exception as e:
                     print(f"FAILED {file_path.name} after retries: {e}")
+                    ws.append([file_path.name, f"ERROR: {e}"])
+
+        # Save once after all PDFs in the subfolder are added
+        wb.save(excel_path)
+        print(f"Saved subfolder Excel: {excel_path}")
