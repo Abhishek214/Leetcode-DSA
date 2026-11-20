@@ -28,7 +28,7 @@ async def export_subfolder_pdfs_to_excel(
     for sub in [f for f in root.iterdir() if f.is_dir()]:
         excel_path = out_dir / f"{sub.name}.xlsx"
 
-        # Skip subfolder if its Excel file was already created
+        # Skip subfolder if its Excel file already exists
         if excel_path.exists():
             print(f"Skipping subfolder (already exists): {excel_path.name}")
             continue
@@ -56,6 +56,7 @@ async def export_subfolder_pdfs_to_excel(
                             str(extracted_data) if extracted_data else ""
                         )
 
+                    # Excel cell character limit
                     if len(extracted_text) > 32767:
                         extracted_text = extracted_text[:32767]
 
@@ -66,6 +67,12 @@ async def export_subfolder_pdfs_to_excel(
                     print(f"FAILED {file_path.name} after retries: {e}")
                     ws.append([file_path.name, f"ERROR: {e}"])
 
-        # Save once after all PDFs in the subfolder are added
         wb.save(excel_path)
         print(f"Saved subfolder Excel: {excel_path}")
+
+
+# Run in Jupyter:
+await export_subfolder_pdfs_to_excel(
+    root_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
+    output_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
+)
