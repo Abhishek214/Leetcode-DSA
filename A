@@ -1,41 +1,66 @@
-import os
-import subprocess
-import tempfile
-import uuid
-from io import BytesIO
+import asyncio
+from pathlib import Path
+import openpyxl
 
-def extractWordImage(self, filename, file_contents):
-    # Converts a DOCX file to PDF bytes using LibreOffice
-    # Use an isolated temporary directory and a random UUID so user input never touches disk paths
-    with tempfile.TemporaryDirectory() as temp_dir:
-        unique_id = uuid.uuid4().hex
-        source_file_path = os.path.join(temp_dir, f"{unique_id}.docx")
-        output_pdf_path = os.path.join(temp_dir, f"{unique_id}.pdf")
 
-        with open(source_file_path, "wb") as files_:
-            files_.write(file_contents)
-
-        self.logger.info(f"DOCX file is read and written on disk in location {source_file_path}")
-        self.logger.info(f"The converted docx file will be stored in this directory {temp_dir}")
-
-        args = [
-            'libreoffice', '--headless', '--convert-to', 'pdf',
-            '--outdir', temp_dir, source_file_path
-        ]
-        process = subprocess.run(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=None)
-        self.logger.info(f"LibreOffice stdout: {process.stdout.decode()}")
-
-        if not os.path.exists(output_pdf_path):
-            error_msg = (
-                f"LibreOffice conversion failed or PDF not found. "
-                f"STDOUT: {process.stdout.decode()} STDERR: {process.stderr.decode()}"
+async def get_text_with_retry(
+    pdf_path: str, retries: int = 3, delay: float = 2.0
+):
+    for attempt in range(1, retries + 1):
+        try:
+            return await get_text_from_pdf(pdf_path)
+        except Exception as e:
+            if attempt == retries:
+                raise
+            print(
+                f"Attempt {attempt} failed for {Path(pdf_path).name} ({e}). Retrying in {delay}s..."
             )
-            self.logger.error(error_msg)
-            raise LibreOfficeError(error_msg)
+            await asyncio.sleep(delay * attempt)
 
-        with open(output_pdf_path, 'rb') as fh:
-            converted_file_contents = BytesIO(fh.read())
 
-    # TemporaryDirectory automatically deletes source_file_path and output_pdf_path on exit
-    self.logger.info("The given docx is converted into pdf and read the pdf into bytes and removed the pdf file on disk")
-    return converted_file_contents.getvalue()
+async def export_subfolder_pdfs_to_excel(
+    root_folder: str, output_folder: str = None
+):
+    root = Path(root_folder)
+    out_dir = Path(output_folder) if output_folder else root
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for sub in [f for f in root.iterdir() if f.is_dir()]:
+        for file_path in sorted(sub.iterdir()):
+            if file_path.is_file() and file_path.suffix.lower() == ".pdf":
+                excel_path = out_dir / f"{file_path.stem}.xlsx"
+
+                # Resume support: skip files that were already saved
+                if excel_path.exists():
+                    print(f"Skipping (already exists): {excel_path.name}")
+                    continue
+
+                try:
+                    extracted_data = await get_text_with_retry(str(file_path))
+
+                    # Keep only the first 3 pages
+                    if isinstance(extracted_data, dict):
+                        first_3_pages = list(extracted_data.items())[:3]
+                        extracted_text = "\n\n".join(
+                            f"--- {page} ---\n{text}"
+                            for page, text in first_3_pages
+                        )
+                    else:
+                        extracted_text = (
+                            str(extracted_data) if extracted_data else ""
+                        )
+
+                    if len(extracted_text) > 32767:
+                        extracted_text = extracted_text[:32767]
+
+                    wb = openpyxl.Workbook()
+                    ws = wb.active
+                    ws.title = "Extracted text"
+                    ws.append(["File_name", "Extracted Text"])
+                    ws.append([file_path.name, extracted_text])
+
+                    wb.save(excel_path)
+                    print(f"Saved : {excel_path}")
+
+                except Exception as e:
+                    print(f"FAILED {file_path.name} after retries: {e}")
