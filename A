@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
-import docx  # Requires: pip install python-docx
+import docx
 
 
 async def get_text_with_retry(
@@ -19,106 +19,100 @@ async def get_text_with_retry(
             await asyncio.sleep(delay * attempt)
 
 
-def get_text_from_docx(docx_path: str) -> str:
+def get_text_from_docx_pages(docx_path: str) -> dict:
     doc = docx.Document(docx_path)
-    parts = []
+    pages = []
+    current_page = []
+    w_type = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}type"
 
-    # Extract paragraphs
-    for para in doc.paragraphs:
-        if para.text.strip():
-            parts.append(para.text.strip())
+    for block in doc.element.body:
+        tag = block.tag.split("}")[-1]
 
-    # Extract table rows (common in KYC/AML forms and letters)
-    for table in doc.tables:
-        for row in table.rows:
-            row_text = [
-                cell.text.strip() for cell in row.cells if cell.text.strip()
-            ]
-            if row_text:
-                parts.append(" | ".join(row_text))
+        if tag == "p":
+            para = docx.text.paragraph.Paragraph(block, doc)
+            text = para.text.strip()
+            if text:
+                current_page.append(text)
 
-    return "\n".join(parts)
+            # Split on manual page breaks or Word's saved page breaks
+            has_break = any(
+                el.tag.endswith("lastRenderedPageBreak")
+                or (el.tag.endswith("br") and el.get(w_type) == "page")
+                for el in block.iter()
+            )
+            if has_break:
+                pages.append("\n".join(current_page))
+                current_page = []
+
+        elif tag == "tbl":
+            table = docx.table.Table(block, doc)
+            for row in table.rows:
+                row_text = [
+                    cell.text.strip() for cell in row.cells if cell.text.strip()
+                ]
+                if row_text:
+                    current_page.append(" | ".join(row_text))
+
+    if current_page or not pages:
+        pages.append("\n".join(current_page))
+
+    return {
+        f"Page-{i}": page_text for i, page_text in enumerate(pages, start=1)
+    }
 
 
-async def export_subfolder_docs_to_json(
-    root_folder: str, output_folder: str = None
+async def export_docs_to_page_jsons(
+    root_folder: str, output_folder: str = None, max_pages: int = None
 ):
     root = Path(root_folder)
     out_dir = Path(output_folder) if output_folder else root
     out_dir.mkdir(parents=True, exist_ok=True)
 
     for sub in [f for f in root.iterdir() if f.is_dir()]:
-        json_path = out_dir / f"{sub.name}.json"
-
-        # Skip doctype if its JSON file already exists
-        if json_path.exists():
-            print(f"Skipping doctype (already exists): {json_path.name}")
-            continue
-
-        records = []
+        sub_out_dir = out_dir / sub.name
+        sub_out_dir.mkdir(parents=True, exist_ok=True)
 
         for file_path in sorted(sub.iterdir()):
-            # Skip hidden/temporary lock files (e.g., ~$file.docx)
             if not file_path.is_file() or file_path.name.startswith("~$"):
                 continue
 
             ext = file_path.suffix.lower()
+            if ext not in {".pdf", ".docx"}:
+                continue
 
-            if ext == ".pdf":
-                try:
-                    extracted_data = await get_text_with_retry(str(file_path))
+            json_path = sub_out_dir / f"{file_path.stem}.json"
 
-                    # Keep only the first 3 pages
-                    if isinstance(extracted_data, dict):
-                        first_3_pages = list(extracted_data.items())[:3]
-                        extracted_text = "\n\n".join(
-                            f"--- {page} ---\n{text}"
-                            for page, text in first_3_pages
-                        )
-                    else:
-                        extracted_text = (
-                            str(extracted_data) if extracted_data else ""
-                        )
+            # Resume support: skip already-processed documents
+            if json_path.exists():
+                print(f"Skipping (already exists): {json_path.name}")
+                continue
 
-                    records.append({
-                        "file_name": file_path.name,
-                        "extracted_text": extracted_text,
-                    })
-                    print(f"Processed PDF: {file_path.name}")
+            try:
+                if ext == ".pdf":
+                    extracted = await get_text_with_retry(str(file_path))
+                else:
+                    extracted = get_text_from_docx_pages(str(file_path))
 
-                except Exception as e:
-                    print(f"FAILED {file_path.name} after retries: {e}")
-                    records.append({
-                        "file_name": file_path.name,
-                        "extracted_text": None,
-                        "error": str(e),
-                    })
+                # Normalize output to {"Page-1": "...", "Page-2": "..."}
+                if isinstance(extracted, dict):
+                    items = list(extracted.items())
+                    if max_pages:
+                        items = items[:max_pages]
+                    page_dict = dict(items)
+                else:
+                    page_dict = {"Page-1": str(extracted) if extracted else ""}
 
-            elif ext == ".docx":
-                try:
-                    extracted_text = get_text_from_docx(str(file_path))
-                    records.append({
-                        "file_name": file_path.name,
-                        "extracted_text": extracted_text,
-                    })
-                    print(f"Processed DOCX: {file_path.name}")
+                with open(json_path, "w", encoding="utf-8") as f:
+                    json.dump(page_dict, f, indent=4, ensure_ascii=False)
 
-                except Exception as e:
-                    print(f"FAILED {file_path.name}: {e}")
-                    records.append({
-                        "file_name": file_path.name,
-                        "extracted_text": None,
-                        "error": str(e),
-                    })
+                print(f"Saved: {json_path}")
 
-        with open(json_path, "w", encoding="utf-8") as f:
-            json.dump(records, f, indent=4, ensure_ascii=False)
-
-        print(f"Saved doctype JSON: {json_path}")
+            except Exception as e:
+                print(f"FAILED {file_path.name}: {e}")
 
 
-# Run in Jupyter:
-await export_subfolder_docs_to_json(
+# Run in Jupyter (saves all pages per document; pass max_pages=3 if you want to cap pages):
+await export_docs_to_page_jsons(
     root_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
     output_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
 )
