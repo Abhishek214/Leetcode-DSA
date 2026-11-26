@@ -1,41 +1,124 @@
-BLOCKED_UNKNOWN_KEYWORDS = [
-    # Add your keywords/regexes here, e.g.:
-    # r"\bterms and conditions\b",
-    # r"\bprivacy notice\b",
-]
-
-def classify_document_with_scoring(document, business, categories, is_first_page=False, anchor_label=None):
-    if any(re.search(kw, document, re.IGNORECASE) for kw in BLOCKED_UNKNOWN_KEYWORDS):
-        return "BLOCKED", 0
+import asyncio
+import json
+from pathlib import Path
+import docx  # Requires: pip install python-docx
 
 
-        if anchor_label is None:
-            if label not in ['UNKNOWN_DOCTYPE', 'BLOCKED']:   # <-- changed
-                anchor_label = label
-                data[ix + 1] = label
-                if pending_unknown_pages and anchor_label not in id_card:
-                    logger.info(f"Backfilling {len(pending_unknown_pages)} previous UNKNOWN pages with anchor label: {anchor_label}")
-                    for page_num in pending_unknown_pages:
-                        data[page_num] = anchor_label
-                    pending_unknown_pages = []
-            else:
-                data[ix + 1] = label
-                if label != 'BLOCKED':                        # <-- added
-                    pending_unknown_pages.append(ix + 1)
-        else:
-            data[ix + 1] = label
+async def get_text_with_retry(
+    pdf_path: str, retries: int = 3, delay: float = 2.0
+):
+    for attempt in range(1, retries + 1):
+        try:
+            return await get_text_from_pdf(pdf_path)
+        except Exception as e:
+            if attempt == retries:
+                raise
+            print(
+                f"Attempt {attempt} failed for {Path(pdf_path).name} ({e}). Retrying in {delay * attempt}s..."
+            )
+            await asyncio.sleep(delay * attempt)
 
-        scores.append(score)
-        if label == 'BLOCKED':                                # <-- added (prevents NAR1/ND2A short-page overwrite)
+
+def get_text_from_docx(docx_path: str) -> str:
+    doc = docx.Document(docx_path)
+    parts = []
+
+    # Extract paragraphs
+    for para in doc.paragraphs:
+        if para.text.strip():
+            parts.append(para.text.strip())
+
+    # Extract table rows (common in KYC/AML forms and letters)
+    for table in doc.tables:
+        for row in table.rows:
+            row_text = [
+                cell.text.strip() for cell in row.cells if cell.text.strip()
+            ]
+            if row_text:
+                parts.append(" | ".join(row_text))
+
+    return "\n".join(parts)
+
+
+async def export_subfolder_docs_to_json(
+    root_folder: str, output_folder: str = None
+):
+    root = Path(root_folder)
+    out_dir = Path(output_folder) if output_folder else root
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    for sub in [f for f in root.iterdir() if f.is_dir()]:
+        json_path = out_dir / f"{sub.name}.json"
+
+        # Skip doctype if its JSON file already exists
+        if json_path.exists():
+            print(f"Skipping doctype (already exists): {json_path.name}")
             continue
 
+        records = []
+
+        for file_path in sorted(sub.iterdir()):
+            # Skip hidden/temporary lock files (e.g., ~$file.docx)
+            if not file_path.is_file() or file_path.name.startswith("~$"):
+                continue
+
+            ext = file_path.suffix.lower()
+
+            if ext == ".pdf":
+                try:
+                    extracted_data = await get_text_with_retry(str(file_path))
+
+                    # Keep only the first 3 pages
+                    if isinstance(extracted_data, dict):
+                        first_3_pages = list(extracted_data.items())[:3]
+                        extracted_text = "\n\n".join(
+                            f"--- {page} ---\n{text}"
+                            for page, text in first_3_pages
+                        )
+                    else:
+                        extracted_text = (
+                            str(extracted_data) if extracted_data else ""
+                        )
+
+                    records.append({
+                        "file_name": file_path.name,
+                        "extracted_text": extracted_text,
+                    })
+                    print(f"Processed PDF: {file_path.name}")
+
+                except Exception as e:
+                    print(f"FAILED {file_path.name} after retries: {e}")
+                    records.append({
+                        "file_name": file_path.name,
+                        "extracted_text": None,
+                        "error": str(e),
+                    })
+
+            elif ext == ".docx":
+                try:
+                    extracted_text = get_text_from_docx(str(file_path))
+                    records.append({
+                        "file_name": file_path.name,
+                        "extracted_text": extracted_text,
+                    })
+                    print(f"Processed DOCX: {file_path.name}")
+
+                except Exception as e:
+                    print(f"FAILED {file_path.name}: {e}")
+                    records.append({
+                        "file_name": file_path.name,
+                        "extracted_text": None,
+                        "error": str(e),
+                    })
+
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump(records, f, indent=4, ensure_ascii=False)
+
+        print(f"Saved doctype JSON: {json_path}")
 
 
-
-        if classification == "BLOCKED":
-            result.append((start, start, "UNKNOWN_DOCTYPE"))
-            i += 1
-            continue
-        if classification == "EMAIL":
-            classification = "UNKNOWN_DOCTYPE"
-
+# Run in Jupyter:
+await export_subfolder_docs_to_json(
+    root_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
+    output_folder="/opt/disk1/app/Abhishek/DCREST Netherlands",
+)
